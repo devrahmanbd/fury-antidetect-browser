@@ -784,7 +784,14 @@ export function App() {
         {shell.agent_ready && !shell.core_ready && (
           <div className="notice warnBar" role="status">
             <div style={{ flex: 1 }}>
-              <strong>{t("app.noCore")}</strong>
+              <strong>
+                {shell.core_outdated
+                  ? t("app.coreOutdated", {
+                      have: shell.core_outdated.have.split(".")[0],
+                      need: String(shell.core_outdated.need),
+                    })
+                  : t("app.noCore")}
+              </strong>
               <div className="muted" style={{ marginTop: "var(--s-1)" }}>
                 {dl?.running
                   ? dl.total > 0
@@ -793,7 +800,10 @@ export function App() {
                         total: Math.round(dl.total / 1e6).toString(),
                       })
                     : t("app.coreStarting")
-                  : (dl?.error ?? shell.core_problem ?? t("app.noCoreHow"))}
+                  : (dl?.error ??
+                    (shell.core_outdated ? t("app.coreOutdatedHow") : null) ??
+                    shell.core_problem ??
+                    t("app.noCoreHow"))}
               </div>
               {dl?.running && dl.total > 0 && (
                 <progress

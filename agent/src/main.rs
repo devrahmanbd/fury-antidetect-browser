@@ -370,6 +370,60 @@ async fn cmd_launch(args: &[String]) -> anyhow::Result<()> {
 /// Looked up rather than configured, because the common case is that the app
 /// bundle ships one next to the agent. FURY_CORE overrides for a development
 /// tree, where the build output is somewhere only the developer knows.
+/// The Chrome version of a core, read without starting it: the PE version
+/// resource on Windows, Info.plist on macOS. None when it cannot be read, and
+/// that is not treated as a mismatch -- a core that will not say is a core the
+/// existing checks already deal with at launch.
+pub fn core_version(exe: &std::path::Path) -> Option<String> {
+    #[cfg(windows)]
+    {
+        return fury_platform::version::file_version(exe).ok();
+    }
+    #[cfg(target_os = "macos")]
+    {
+        // .../Fury.app/Contents/MacOS/Fury -> .../Fury.app/Contents/Info.plist
+        let plist = exe.parent()?.parent()?.join("Info.plist");
+        let text = std::fs::read_to_string(plist).ok()?;
+        let rest = &text[text.find("<key>CFBundleShortVersionString</key>")?..];
+        let start = rest.find("<string>")? + "<string>".len();
+        let end = rest[start..].find("</string>")?;
+        return Some(rest[start..start + end].trim().to_string());
+    }
+    #[allow(unreachable_code)]
+    None
+}
+
+/// The installed core's version, when it is a different Chrome from the one
+/// this agent tells sites it is.
+///
+/// Until 0.2.3 every release reused the same core, so an application update
+/// never needed a new browser. 0.2.3 moves to Chrome 155 and announces it --
+/// the user agent, the client hints, the brand list are all derived from
+/// CHROME_MAJOR -- and an application updated on its own would have gone on
+/// launching the 153 engine behind that claim. The engine's own features give
+/// the version away, so the claim becomes a contradiction. Such a core is
+/// reported as not there: the shell then shows its download button, and the
+/// download replaces it.
+///
+/// A core named explicitly by FURY_CORE is exempt. That is a developer running
+/// a build of their choosing, and it has to keep working mid-rebase.
+pub fn core_outdated(exe: &std::path::Path) -> Option<String> {
+    if std::env::var("FURY_CORE").is_ok_and(|v| std::path::Path::new(&v) == exe) {
+        return None;
+    }
+    let version = core_version(exe)?;
+    let major: u32 = version.split('.').next()?.parse().ok()?;
+    (major != CHROME_MAJOR).then_some(version)
+}
+
+fn core_version_problem(exe: &std::path::Path) -> Option<String> {
+    let have = core_outdated(exe)?;
+    Some(format!(
+        "The installed browser is Chrome {have}, and this version of Fury needs Chrome \
+         {CHROME_MAJOR}. Download the new one; it replaces the old."
+    ))
+}
+
 pub fn core_binary() -> Option<std::path::PathBuf> {
     if let Ok(explicit) = std::env::var("FURY_CORE") {
         let path = std::path::PathBuf::from(explicit);
@@ -431,7 +485,9 @@ pub fn core_binary() -> Option<std::path::PathBuf> {
 /// but still worth saying, because a FURY_CORE naming a deleted build is
 /// somebody's leftover and will confuse them again next week.
 pub fn core_lookup_problem() -> Option<String> {
-    let explicit = std::env::var("FURY_CORE").ok()?;
+    let Ok(explicit) = std::env::var("FURY_CORE") else {
+        return core_binary().and_then(|exe| core_version_problem(&exe));
+    };
     if std::path::Path::new(&explicit).exists() {
         return None;
     }
@@ -807,5 +863,34 @@ mod tests {
     #[test]
     fn the_sample_persona_is_self_consistent() {
         samples::macos_arm64().validate().unwrap();
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn a_core_of_another_chrome_is_outdated_and_this_one_is_not() {
+        let root = std::env::temp_dir().join("fury-core-version-test");
+        std::fs::remove_dir_all(&root).ok();
+        let exe_for = |version: &str| {
+            let app = root.join(version).join("Fury.app/Contents");
+            std::fs::create_dir_all(app.join("MacOS")).unwrap();
+            std::fs::write(
+                app.join("Info.plist"),
+                format!(
+                    "<?xml version=\"1.0\"?>\n<plist><dict>\n\t<key>CFBundleShortVersionString</key>\n\t<string>{version}</string>\n</dict></plist>\n"
+                ),
+            )
+            .unwrap();
+            let exe = app.join("MacOS/Fury");
+            std::fs::write(&exe, b"").unwrap();
+            exe
+        };
+        let old = exe_for("153.0.8010.37");
+        let current = exe_for(&format!("{}.0.8059.12", super::CHROME_MAJOR));
+        assert_eq!(super::core_version(&old).as_deref(), Some("153.0.8010.37"));
+        assert_eq!(super::core_outdated(&old).as_deref(), Some("153.0.8010.37"));
+        assert_eq!(super::core_outdated(&current), None);
+        // A core whose version cannot be read is not called outdated.
+        assert_eq!(super::core_outdated(&root.join("nowhere/Fury.app/Contents/MacOS/Fury")), None);
+        std::fs::remove_dir_all(&root).ok();
     }
 }

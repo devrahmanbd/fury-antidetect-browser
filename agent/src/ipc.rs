@@ -248,8 +248,9 @@ impl Agent {
     /// Cheap enough to do per call: a few `exists()` on paths, and a legacy
     /// directory check that returns on its first condition once there is
     /// nothing to move.
+    /// The core to launch: found, and the Chrome this agent claims to be.
     fn core(&self) -> Option<std::path::PathBuf> {
-        crate::core_binary()
+        crate::core_binary().filter(|exe| crate::core_outdated(exe).is_none())
     }
 
     /// Notice browsers the operator closed from their own window.
@@ -392,6 +393,11 @@ impl Agent {
                 Ok(json!({
                     "version": env!("CARGO_PKG_VERSION"),
                     "core": self.core().map(|p| p.display().to_string()),
+                    // Installed but the wrong Chrome: what it is and what is
+                    // needed, for the shell to say so in its own language.
+                    "core_outdated": crate::core_binary()
+                        .and_then(|exe| crate::core_outdated(&exe))
+                        .map(|have| json!({ "have": have, "need": crate::CHROME_MAJOR })),
                     // Why there is no core, when the reason is not "you have
                     // not installed one". The shell shows this verbatim: a
                     // stale FURY_CORE and a missing download need opposite

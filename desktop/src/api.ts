@@ -408,6 +408,9 @@ export interface Shell {
   /** The agent's own sentence about why there is none, when it has one — a
    *  stale FURY_CORE reads nothing like a missing download. */
   core_problem: string | null;
+  /** Installed, but a different Chrome from the one this version claims to
+   *  be. core_ready is false with it, so the download bar shows. */
+  core_outdated?: { have: string; need: number } | null;
   /** Progress of a core download the user asked for, straight from the agent.
    *  Absent until the agent has been asked once. `running` false with
    *  `installed` set means it finished; with `error` set means it did not. */

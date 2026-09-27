@@ -317,6 +317,9 @@ pub struct Shell {
     pub core_ready: bool,
     /// The agent's own sentence about why not, when it has one.
     pub core_problem: Option<String>,
+    /// A core is installed but it is a different Chrome from the one this
+    /// version claims to be: `{ have, need }`. core_ready is false with it.
+    pub core_outdated: Option<serde_json::Value>,
     /// This build, for the About panel and for any bug report that follows it.
     pub version: &'static str,
 
@@ -405,6 +408,7 @@ pub async fn shell_state(state: State<'_, AppState>) -> Result<Shell, ApiErr> {
     // A missing core is a five-minute fix and a confusing failure, and the
     // order those happen in is the whole difference.
     let mut core_download = None;
+    let mut core_outdated = None;
     let (core_ready, core_problem) = if agent_ready {
         match crate::agent::call::<serde_json::Value>("status", serde_json::json!({})).await {
             Ok(v) => (
@@ -413,6 +417,7 @@ pub async fn shell_state(state: State<'_, AppState>) -> Result<Shell, ApiErr> {
                     // from it, and a struct here would be a third place that has
                     // to learn about every new field.
                     core_download = v.get("core_download").cloned();
+                    core_outdated = v.get("core_outdated").filter(|o| !o.is_null()).cloned();
                     v.get("core").map(|c| !c.is_null()).unwrap_or(false)
                 },
                 v.get("core_problem")
@@ -459,6 +464,7 @@ pub async fn shell_state(state: State<'_, AppState>) -> Result<Shell, ApiErr> {
         core_download,
         core_ready,
         core_problem,
+        core_outdated,
         version: env!("CARGO_PKG_VERSION"),
         org_key_ready,
         last_email,
