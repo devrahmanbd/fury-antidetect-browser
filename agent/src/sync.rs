@@ -21,6 +21,34 @@
 
 use std::time::Duration;
 
+use anyhow::Context as _;
+
+/// What to say when moving a whole profile to or from the server breaks off.
+///
+/// reqwest's own words, "error sending request for url (.../bundle)", were all
+/// a tester's log held when every upload failed, and they point nowhere. The
+/// case that produced them, 27.09.2026: the team server behind Cloudflare's
+/// proxy, where small requests pass and a transfer of a whole profile does not
+/// (100 MB and 100 s on the free plan). docs/14 has the fix.
+const TRANSFER_HINT: &str = "moving this profile's data to or from the team server broke off. \
+    Small requests reaching the server and this failing usually means something in between \
+    limits large transfers -- a proxy such as Cloudflare's (set the record to DNS only), \
+    an antivirus, or a very slow link. See docs/14-team-server.md";
+
+/// A refusal that came from Cloudflare rather than from the Fury server says so.
+fn refused_by(res: &reqwest::Response) -> &'static str {
+    let cf = res
+        .headers()
+        .get(reqwest::header::SERVER)
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|v| v.eq_ignore_ascii_case("cloudflare"));
+    if cf {
+        " -- answered by Cloudflare's proxy, not by the Fury server; set the record to DNS only (docs/14)"
+    } else {
+        ""
+    }
+}
+
 /// A server the agent may talk to for the duration of one launch.
 #[derive(Clone, Debug, serde::Deserialize)]
 pub struct Server {
@@ -54,13 +82,14 @@ impl Server {
             .get(format!("{}/v1/profiles/{profile_id}/bundle", self.url))
             .bearer_auth(&self.token)
             .send()
-            .await?;
+            .await
+            .context(TRANSFER_HINT)?;
 
         if res.status() == reqwest::StatusCode::NOT_FOUND {
             return Ok(None);
         }
         if !res.status().is_success() {
-            anyhow::bail!("the server refused the bundle ({})", res.status());
+            anyhow::bail!("the server refused the bundle ({}){}", res.status(), refused_by(&res));
         }
 
         let wrapped = header(&res, "x-fury-wrapped-key")
@@ -68,7 +97,7 @@ impl Server {
         let version: i32 = header(&res, "x-fury-version")
             .and_then(|v| v.parse().ok())
             .unwrap_or(0);
-        Ok(Some((res.bytes().await?.to_vec(), wrapped, version)))
+        Ok(Some((res.bytes().await.context(TRANSFER_HINT)?.to_vec(), wrapped, version)))
     }
 
     /// Push a new version, refusing to clobber someone else's.
@@ -94,7 +123,8 @@ impl Server {
             .header("x-fury-lock-token", lock_token)
             .body(bytes.to_vec())
             .send()
-            .await?;
+            .await
+            .context(TRANSFER_HINT)?;
 
         if res.status() == reqwest::StatusCode::CONFLICT {
             // Said in full rather than as "conflict". The operator's next
@@ -107,7 +137,7 @@ impl Server {
             );
         }
         if !res.status().is_success() {
-            anyhow::bail!("the upload was refused ({})", res.status());
+            anyhow::bail!("the upload was refused ({}){}", res.status(), refused_by(&res));
         }
         let body: serde_json::Value = res.json().await?;
         Ok(body.get("version").and_then(|v| v.as_i64()).unwrap_or(0) as i32)

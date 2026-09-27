@@ -286,7 +286,7 @@ impl Agent {
                 for id in gone {
                     tracing::info!(profile = %id, "browser closed from its own window");
                     if let Err(e) = agent.stop(&id).await {
-                        tracing::warn!(profile = %id, error = %e, "could not tidy up after it");
+                        tracing::warn!(profile = %id, error = format!("{e:#}"), "could not tidy up after it");
                     }
                 }
             }
@@ -343,14 +343,25 @@ impl Agent {
             let response = match serde_json::from_str::<Request>(&line) {
                 Ok(req) => {
                     let id = req.id;
+                    let method = req.method.clone();
                     match self.dispatch(&req.method, req.params).await {
                         Ok(value) => Response { id, ok: Some(value), err: None, code: None },
-                        Err(e) => Response {
+                        Err(e) => {
+                            // Launches and stops also go to the log. Their answer
+                            // is the only record of why a profile did not open,
+                            // and a shell that stopped waiting drops it: a
+                            // tester's log showed a team launch pass the exit
+                            // check and then nothing at all, 27.09.2026.
+                            if method.starts_with("profile.") {
+                                tracing::warn!(method = %method, error = format!("{e:#}"), "refused");
+                            }
+                            Response {
                             id,
                             ok: None,
                             err: Some(e.to_string()),
                             code: e.downcast_ref::<Coded>().map(|c| c.code),
-                        },
+                            }
+                        }
                     }
                 }
                 Err(e) => Response {
