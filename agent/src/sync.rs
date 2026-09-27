@@ -35,6 +35,10 @@ impl Server {
             // but not unbounded — a wedged server must surface, not hang a
             // launch forever.
             .timeout(Duration::from_secs(300))
+            // But a server that does not answer the connection at all is not a
+            // slow server, and five minutes of silence in front of a launch
+            // reads as a hang. Fail that in fifteen, saying why.
+            .connect_timeout(Duration::from_secs(15))
             .build()?)
     }
 

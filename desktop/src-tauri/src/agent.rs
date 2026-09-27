@@ -133,6 +133,24 @@ pub use fury_platform::dirs::ipc_endpoint;
 #[cfg(test)]
 use fury_platform::dirs::{data_dir, short_tag};
 
+/// How long to wait for the agent's answer to one method.
+///
+/// Thirty seconds is right for everything that only reads or writes the local
+/// database, and it was applied to launching too. A team profile's launch pulls
+/// its bundle from the server first, which the agent allows five minutes for
+/// (sync.rs: "a bundle is tens of megabytes"), then asks where the proxy exits
+/// (fifteen seconds). A launch that took thirty-one seconds came back as "the
+/// agent did not answer" while the agent went on working, and the profile sat
+/// "in use here" with no browser. A tester's colleague met exactly that on his
+/// first team launch, 27.09.2026. The wait now outlasts the agent's own bounds,
+/// so an answer, or the agent's own error, always arrives.
+fn answer_within(method: &str) -> Duration {
+    match method {
+        "profile.launch" => Duration::from_secs(360),
+        _ => Duration::from_secs(30),
+    }
+}
+
 /// One request, one response.
 pub async fn call<T: DeserializeOwned>(method: &str, params: Value) -> Result<T, AgentError> {
     let endpoint = ipc_endpoint();
@@ -157,7 +175,7 @@ pub async fn call<T: DeserializeOwned>(method: &str, params: Value) -> Result<T,
     // A bounded wait: a wedged agent must surface as an error the operator can
     // act on, not as a window that never finishes loading.
     tokio::time::timeout(
-        Duration::from_secs(30),
+        answer_within(method),
         BufReader::new(read).read_line(&mut line),
     )
     .await
