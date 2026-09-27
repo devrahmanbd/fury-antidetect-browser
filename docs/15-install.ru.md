@@ -2,8 +2,9 @@
 
 > **Релизы есть; для macOS они подписаны, для Windows — нет.** На странице
 > [Releases](https://github.com/furyteamtop/fury-antidetect-browser/releases)
-> сборки лежат с 18.08.2026; текущая — 0.2.2, для macOS на Apple Silicon и для
-> Windows x64, помечена как pre-release. К каждой приложены `SHA256SUMS` и
+> сборки лежат с 18.08.2026; текущая — 0.2.3 для Windows x64 и 0.2.2 для macOS
+> на Apple Silicon (0.2.3 для macOS выйдет, когда соберётся её ядро на Chrome 155),
+> помечена как pre-release. К каждой приложены `SHA256SUMS` и
 > `REPORT.md` — измерение, которое ядро прошло перед публикацией. С 21.09.2026
 > приложение, ядро и образ диска для macOS подписаны Developer ID и
 > нотаризованы, так что открываются как любая другая загрузка. Установщик для
@@ -71,7 +72,7 @@ macOS-фреймворк, снимает карантинный флаг, кот
 стартует**. Если напечаталась версия, ядро установлено:
 
 ```
-installed Fury 153.0.8010.37
+installed Fury 155.0.8059.12
   /Users/you/Library/Application Support/Fury/core.bundle/Fury.app/Contents/MacOS/Fury
 ```
 

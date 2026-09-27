@@ -2,8 +2,9 @@
 
 > **There are releases; macOS ones are signed, Windows ones are not.** The
 > [Releases](https://github.com/furyteamtop/fury-antidetect-browser/releases)
-> page has had builds since 18.08.2026; the current one is 0.2.2, for macOS on
-> Apple Silicon and for Windows x64, marked pre-release. Each ships with
+> page has had builds since 18.08.2026; the current one is 0.2.3 for Windows x64
+> and 0.2.2 for macOS on Apple Silicon (0.2.3 for macOS follows once its Chrome
+> 155 core is built), marked pre-release. Each ships with
 > `SHA256SUMS` and a `REPORT.md` — the measurement the core passed before it was
 > published. Since 21.09.2026 the macOS application, core and disk image are
 > signed with a Developer ID and notarised, so they open like any other
@@ -71,7 +72,7 @@ from, it removes the quarantine flag your browser attached to the download, and
 If it prints a version, it is installed:
 
 ```
-installed Fury 153.0.8010.37
+installed Fury 155.0.8059.12
   /Users/you/Library/Application Support/Fury/core.bundle/Fury.app/Contents/MacOS/Fury
 ```
 
