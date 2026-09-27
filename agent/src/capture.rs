@@ -223,7 +223,18 @@ fn suggest_id(dump: &serde_json::Value) -> String {
     let os = if plat == "macOS" {
         "macos".to_string()
     } else if plat == "Windows" {
-        "win11".to_string()
+        // navigator.userAgentData says "Windows" for both, and only
+        // platformVersion tells them apart: Chrome reports 13.0.0 and up on
+        // Windows 11 and 1.0.0-10.0.0 on Windows 10. Calling every Windows
+        // machine win11 named a tester's Windows 10 capture after an OS it
+        // is not running.
+        let major = s(dump, "clientHints.platformVersion")
+            .and_then(|v| v.split('.').next().and_then(|m| m.parse::<u32>().ok()));
+        match major {
+            Some(m) if m >= 13 => "win11".to_string(),
+            Some(_) => "win10".to_string(),
+            None => "windows".to_string(),
+        }
     } else {
         plat.to_ascii_lowercase()
     };
@@ -282,5 +293,22 @@ mod tests {
             "screen": { "width": 1470, "height": 956 }
         });
         assert_eq!(suggest_id(&dump), "macos-m5-1470x956");
+    }
+
+    #[test]
+    fn windows_10_and_11_are_told_apart_by_platform_version() {
+        let win = |version: &str| {
+            serde_json::json!({
+                "clientHints": { "platform": "Windows", "platformVersion": version },
+                "webgl": { "webgl2": { "unmasked": { "renderer": "ANGLE (Intel, Intel(R) UHD Graphics (0x00009B41) Direct3D11 vs_5_0 ps_5_0, D3D11)" } } },
+                "screen": { "width": 1280, "height": 720 }
+            })
+        };
+        // The tester's capture, 27.09.2026: Windows 10, platformVersion 7.0.0.
+        assert_eq!(suggest_id(&win("7.0.0")), "win10-uhdgraphics-1280x720");
+        assert_eq!(suggest_id(&win("10.0.0")), "win10-uhdgraphics-1280x720");
+        assert_eq!(suggest_id(&win("13.0.0")), "win11-uhdgraphics-1280x720");
+        assert_eq!(suggest_id(&win("19.0.0")), "win11-uhdgraphics-1280x720");
+        assert_eq!(suggest_id(&win("")), "windows-uhdgraphics-1280x720");
     }
 }
