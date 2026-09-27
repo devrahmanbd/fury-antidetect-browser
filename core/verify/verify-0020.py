@@ -13,6 +13,12 @@ arithmetic rather than the numbers:
   * `outerWidth - innerWidth` is the browser's own chrome. It is a small,
     stable number on a real browser; if the screen is spoofed and the window is
     not, the two stop being consistent with each other.
+  * CSS asks the same questions. `matchMedia('(device-width: 1920px)')`,
+    `(resolution: 1dppx)` and `(color: 8)` read ScreenInfo directly rather than
+    through Screen, and until 27.09.2026 they answered with the HOST's screen
+    beside a persona's screen.width — measured on 0.2.2 as JS 1920x1080 at 1x
+    against CSS 1470 at 2dppx. fv.pro called that "screen is not real" and
+    iphey flagged it twice; neither did once CSS agreed.
   * a Worker has no `screen` at all, so there is nothing to disagree — which is
     why this one is checked in an IFRAME instead, where there is.
 
@@ -51,6 +57,15 @@ READ = """
     colorDepth: s.colorDepth, pixelDepth: s.pixelDepth,
     dpr: devicePixelRatio,
     outerWidth, innerWidth, outerHeight, innerHeight,
+  };
+  const mm = (q) => matchMedia(q).matches;
+  out.css = {
+    width: mm(`(device-width: ${s.width}px)`),
+    height: mm(`(device-height: ${s.height}px)`),
+    aspect: mm(`(device-aspect-ratio: ${s.width}/${s.height})`),
+    resolution: mm(`(resolution: ${devicePixelRatio}dppx)`),
+    webkitRatio: mm(`(-webkit-device-pixel-ratio: ${devicePixelRatio})`),
+    color: mm(`(color: ${s.colorDepth / 3})`),
   };
   const f = document.createElement('iframe');
   f.src = 'about:blank';
@@ -95,16 +110,23 @@ def main():
                      f"the window fits on the screen it claims "
                      f"({got['outerWidth']} <= {got['width']})")
 
+        for feature, ok in got["css"].items():
+            claims.check(ok, f"CSS agrees with JS on {feature} — a media query "
+                             f"answering with the host's screen contradicts "
+                             f"screen.* ({got['css']})")
+
         claims.check(got["iframe"]["width"] == SCREEN["width"]
                      and got["iframe"]["availHeight"] == SCREEN["availHeight"],
                      f"an iframe measures the same screen: {got['iframe']}")
 
     with launch(CORE, None) as s:
         bare = json.loads(s.js(
-            "JSON.stringify({w: screen.width, h: screen.height})"))
+            "JSON.stringify({w: screen.width, h: screen.height, "
+            "css1920: matchMedia('(device-width: 1920px)').matches})"))
         print(f"  unconfigured: {bare}")
         claims.control(
-            (bare["w"], bare["h"]) != (SCREEN["width"], SCREEN["height"]),
+            (bare["w"], bare["h"]) != (SCREEN["width"], SCREEN["height"])
+            and not bare["css1920"],
             f"an unconfigured build reports the host's own screen (got {bare})",
         )
 

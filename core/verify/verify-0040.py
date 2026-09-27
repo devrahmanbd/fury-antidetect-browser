@@ -19,6 +19,11 @@ What 0040 claims, and each part is separately checkable:
     least-significant bit of 16-bit audio, some eight bits above the float32
     floor: inaudible, below the noise of any real converter, and still enough
     to move the sum.
+  * SILENCE AND FLAT RUNS STAY EXACT. An unconnected oscillator renders exact
+    zeros on every machine, a constant source renders its constant; noise
+    there hides nothing and is caught by comparing with 0. fv.pro renders an
+    unconnected 0 Hz oscillator into 100 samples and called us "not real" for
+    it on 27.09.2026 — a real Chrome passes. Only a moving signal is perturbed.
   * `baseLatency` and `outputLatency` come from the persona, because both are
     hardware-derived and cluster per OS. `outputLatency` is checked to be a
     plausible duration rather than merely equal: a negative or absurd latency
@@ -82,6 +87,28 @@ PROBE = """
 """
 
 
+# What fv.pro renders, and a constant source beside it.
+FLAT = """
+(async () => {
+  const silent = new OfflineAudioContext(1, 100, 44100);
+  const o = silent.createOscillator();
+  o.frequency.value = 0;
+  o.start(0);
+  const s = (await silent.startRendering()).getChannelData(0);
+  const flat = new OfflineAudioContext(1, 1000, 44100);
+  const k = flat.createConstantSource();
+  k.offset.value = 0.5;
+  k.connect(flat.destination);
+  k.start(0);
+  const f = (await flat.startRendering()).getChannelData(0);
+  return JSON.stringify({
+    silentNonZero: Array.from(s).filter(v => v !== 0).length,
+    flatOff: Array.from(f).filter(v => v !== 0.5).length,
+  });
+})()
+"""
+
+
 def main():
     claims = Claims("0040 — audio", CORE)
 
@@ -98,6 +125,14 @@ def main():
                      f"than no noise at all ({a['one']['sum']} twice)")
         claims.check(a["one"]["first"] == a["two"]["first"],
                      "and the individual samples match too, not just their sum")
+
+        flat = json.loads(s.js(FLAT))
+        claims.check(flat["silentNonZero"] == 0,
+                     f"an unconnected 0 Hz oscillator renders exact zeros — "
+                     f"fv.pro's check ({flat['silentNonZero']} of 100 not zero)")
+        claims.check(flat["flatOff"] == 0,
+                     f"a constant source renders exactly its constant "
+                     f"({flat['flatOff']} of 1000 samples off 0.5)")
 
         claims.check(abs(a["latency"]["output"] - LATENCY) < 1e-12,
                      f"outputLatency is the persona's "

@@ -161,7 +161,10 @@ TTL, window size, MSS, порядок TCP-опций (p0f). **Из браузе�
 `width`, `height`, `availWidth`, `availHeight`, `colorDepth`, `pixelDepth`, `orientation`,
 `devicePixelRatio`, `outerWidth/Height`, `screenX/Y`, `visualViewport`, `window.chrome`.
 
-Правится в `blink/renderer/core/frame/screen.cc` и `local_dom_window.cc`.
+Правится в `blink/renderer/core/frame/screen.cc` и `local_dom_window.cc`, и ещё в
+`core/css/media_values.cc`: CSS media queries (`device-width`, `device-height`,
+`resolution`, `color`) читают экран в обход `Screen`, и без этой правки
+`matchMedia` отвечал настоящим экраном хоста рядом с персонным `screen.width`.
 
 > **Ловушка.** `outerHeight - innerHeight` = высота хрома браузера. Она различается между
 > Windows и macOS, между версиями, и меняется при открытых DevTools. Если вы заявляете
@@ -181,7 +184,14 @@ TTL, window size, MSS, порядок TCP-опций (p0f). **Из браузе�
   содержимым дают тот же результат. Если шум меняется между вызовами, детектор просто
   вызывает `toDataURL()` дважды и сравнивает;
 - амплитуда ±1-2 в младших битах, не заметно глазу;
-- покрывать надо и `OffscreenCanvas`, и canvas внутри Worker.
+- покрывать надо и `OffscreenCanvas`, и canvas внутри Worker;
+- **только там, где машины различаются.** Canvas, на котором одни сплошные непрозрачные
+  прямоугольники по целым пикселям, побайтно одинаков на любой машине, и шум на нём
+  ничего не прячет, а проверяется точно. fv.pro читает сетку 8×8 случайных цветов 1×1,
+  pixelscan — четырнадцать сплошных прямоугольников через `toDataURL`; оба поймали на
+  этом 0.2.2 (27.09.2026). Шум включается первой операцией, которую машина рисует
+  по-своему (текст, путь, картинка, размытие, смешивание), и выключается сбросом canvas.
+  Аудио по тому же правилу: тишина и ровные участки остаются точными.
 
 Также: `isPointInPath`, `measureText`, `TextMetrics.actualBoundingBox*`.
 

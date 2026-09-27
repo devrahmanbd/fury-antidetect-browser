@@ -71,6 +71,15 @@
 # height, never set outright: innerHeight is the actual viewport and page layout
 # depends on it, while outerHeight - innerHeight is the OS tell. Phase 0
 # measured 143 px on a clean build against 87 px on real Chrome.
+#
+# CSS asks too, and for a month it got the host's answer. device-width,
+# device-height, resolution and color are computed in media_values.cc straight
+# from ScreenInfo, never through Screen, so a persona's screen.width of 1920
+# sat beside matchMedia('(device-width: 1470px)') on this Mac. The "zero
+# differences" that retired 0100 below compared Fury and Chrome on ONE machine
+# with no persona screen — true, and not the question. Measured 27.09.2026 on
+# 0.2.2: fv.pro "screen is not real", iphey eagle + pineapple; both gone once
+# media_values.cc read the same config. verify-0020 checks the agreement.
 0020-screen-window.patch
 # Width and overlay mode must move together: an overlay scrollbar reserves no
 # layout space, so a configured width that layout never reserves is not a width
@@ -116,6 +125,20 @@
 # The perturbation is a pure function of (seed, absolute x, absolute y): no
 # counter, no randomness. A detector reads the canvas twice and compares, and
 # unstable noise is a stronger signal than no noise at all.
+#
+# And only where machines differ. A canvas holding solid, opaque,
+# pixel-aligned rects is byte-identical on every machine, so noise on it hides
+# nothing and is the one thing a detector can check exactly: fv.pro reads back
+# an 8x8 grid of random 1x1 fills, pixelscan fourteen solid rects through
+# toDataURL. Both flagged 0.2.2 for it (27.09.2026). The host now carries a
+# mark set by the first draw a machine renders its own way — text, a path, an
+# image, a blur, a blend — and cleared by reset; all three readbacks ask it.
+# WebGL and every other context keep their noise unconditionally.
+#
+# toBlob() was a hole until then: on the main thread it encodes progressively
+# from the source pixels and never reached ImageDataBuffer, so it returned the
+# REAL canvas beside a noised toDataURL(). CanvasAsyncBlobCreator now noises
+# its source once, before any of its three encoding paths.
 0030-canvas-noise.patch
 # Intercepts once at the top of getParameter() rather than in each of its ~80
 # switch arms: patching them individually guarantees some are missed at the next
@@ -135,6 +158,9 @@
 0033-client-rects.patch
 
 # --- audio ------------------------------------------------------------------
+# Silence and flat runs are left exact: an unconnected oscillator renders zeros
+# on every machine, and fv.pro checks exactly that (100 samples of a 0 Hz
+# oscillator, 27.09.2026). Every sample of a moving signal is still perturbed.
 0040-audio-noise.patch
 0041-speech-voices.patch
 
@@ -301,7 +327,9 @@
 
 # --- css --------------------------------------------------------------------
 # NOT NEEDED FOR PARITY. Measured: zero differences across all 21 media
-# features we probe. prefers-color-scheme is genuinely per-user and would let
+# features we probe — with no persona screen. The four that describe the
+# screen (device-width/-height, resolution, color) DO differ under a persona
+# and are handled in 0020, beside the Screen values they must agree with. prefers-color-scheme is genuinely per-user and would let
 # two profiles on one machine be correlated — but it carries about one bit, and
 # spending a patch plus its rebase cost on one bit is the wrong trade while
 # higher-entropy vectors remain. Revisit if a persona ever needs to claim a

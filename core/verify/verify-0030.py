@@ -33,6 +33,20 @@ What 0030 claims is harder, and each part is checkable:
   6. WORKERS TOO. BaseRenderingContext2D backs OffscreenCanvas as well, which
      the patch says is why it was changed there.
 
+  7. EXACT WHERE EVERY MACHINE IS EXACT. A canvas holding nothing but solid,
+     opaque, pixel-aligned rects reads back byte-identical on every machine,
+     so noise there hides nothing and is the one thing a detector can check
+     exactly. fv.pro fills an 8x8 grid of random colours and reads each pixel
+     back; pixelscan fills fourteen solid rects and compares two toDataURL()s.
+     Both called us "not real" / "masking" for it on 27.09.2026 and neither
+     says so of a real Chrome. Noise starts with the first draw a machine
+     renders its own way (text, a path, an image, a blur) and ends at reset.
+
+  8. toBlob() AGREES. On the main thread toBlob() encodes progressively from
+     the source pixels and never touched ImageDataBuffer, so before 27.09.2026
+     it returned the canvas's REAL pixels beside a noised toDataURL() — the
+     real rendering, and a contradiction to go with it.
+
 Usage: core/verify/verify-0030.py <core binary>
 """
 
@@ -92,6 +106,9 @@ READ = """
 
   const off = new OffscreenCanvas(240, 120);
   const ox = off.getContext('2d');
+  // Text first, so this canvas is one that gets noise at all (claim 7), then a
+  // fill over all of it, so every pixel's intended value is known.
+  ox.font = '10px sans-serif'; ox.fillText('x', 2, 10);
   ox.fillStyle = '#f60'; ox.fillRect(0, 0, 240, 120);
   const offData = ox.getImageData(0, 0, 240, 120);
   // A flat fill: every pixel was asked to be exactly (255, 102, 0), so any
@@ -127,9 +144,13 @@ WORKER = """
   const src = `
     const off = new OffscreenCanvas(64, 64);
     const x = off.getContext('2d');
+    x.font = '10px sans-serif'; x.fillText('x', 2, 10);
     x.fillStyle = '#f60'; x.fillRect(0, 0, 64, 64);
     const d = x.getImageData(0, 0, 64, 64).data;
-    postMessage(Array.from(d.slice(0, 16)).join(','));
+    let moved = 0;
+    for (let i = 0; i < d.length; i += 4)
+      if (d[i] !== 255 || d[i + 1] !== 102 || d[i + 2] !== 0) moved++;
+    postMessage(String(moved));
   `;
   const w = new Worker(URL.createObjectURL(new Blob([src])));
   const out = await new Promise((r) => { w.onmessage = (e) => r(e.data); });
@@ -137,6 +158,63 @@ WORKER = """
   return out;
 })()
 """
+
+
+# Claim 7: what fv.pro and pixelscan do, reduced to what they check.
+EXACT = """
+(async () => {
+  const rnd = (i) => (i * 2654435761 >>> 0) % 256;
+  // fv.pro: an 8x8 grid of 1x1 random colours, each read back alone.
+  const g = document.createElement('canvas'); g.width = 8; g.height = 8;
+  const gx = g.getContext('2d');
+  const want = [];
+  for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) {
+    const c = [rnd(y * 8 + x), rnd(y * 8 + x + 64), rnd(y * 8 + x + 128)];
+    want.push(c);
+    gx.fillStyle = `rgba(${c[0]}, ${c[1]}, ${c[2]}, 255)`;
+    gx.fillRect(x, y, 1, 1);
+  }
+  let gridWrong = 0;
+  for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) {
+    const d = gx.getImageData(x, y, 1, 1).data, c = want[y * 8 + x];
+    if (d[0] !== c[0] || d[1] !== c[1] || d[2] !== c[2] || d[3] !== 255) gridWrong++;
+  }
+  // pixelscan: solid rects, encoded.
+  const r = document.createElement('canvas'); r.width = 140; r.height = 10;
+  const rx = r.getContext('2d');
+  const colours = ['#ff0000', '#00ff00', '#0000ff', '#ffff00', '#ff00ff', '#00ffff',
+                   '#010101', '#fefefe', '#000000', '#333333', '#666666', '#999999',
+                   '#cccccc', '#ffffff'];
+  colours.forEach((c, i) => { rx.fillStyle = c; rx.fillRect(i * 10, 0, 10, 10); });
+  // Reset: text makes a canvas noisy, and assigning its width wipes it.
+  const t = document.createElement('canvas'); t.width = 32; t.height = 32;
+  const tx = t.getContext('2d');
+  tx.font = '20px sans-serif'; tx.fillText('W', 2, 24);
+  t.width = 32;
+  tx.fillStyle = '#336699'; tx.fillRect(0, 0, 32, 32);
+  let resetWrong = 0;
+  const td = tx.getImageData(0, 0, 32, 32).data;
+  for (let i = 0; i < td.length; i += 4)
+    if (td[i] !== 0x33 || td[i + 1] !== 0x66 || td[i + 2] !== 0x99) resetWrong++;
+  return JSON.stringify({gridWrong, rects: r.toDataURL(), colours, resetWrong});
+})()
+"""
+
+# Claim 8: toBlob() on the main thread, beside toDataURL() and getImageData().
+BLOB = """
+(async () => {
+  %(draw)s
+  const blob = await new Promise((res) => c.toBlob(res, 'image/png'));
+  const buf = new Uint8Array(await blob.arrayBuffer());
+  let bin = '';
+  for (let i = 0; i < buf.length; i++) bin += String.fromCharCode(buf[i]);
+  const hex = (a) => Array.from(a).map(v => v.toString(16).padStart(2, '0')).join('');
+  return JSON.stringify({
+    blob: 'data:image/png;base64,' + btoa(bin),
+    whole: hex(x.getImageData(0, 0, 240, 120).data.slice(0, 4096)),
+  });
+})()
+""" % {"draw": DRAW}
 
 
 def decode_png(data_url):
@@ -231,10 +309,38 @@ def main():
                      f"every hash, little enough to be invisible "
                      f"({a['flatMoved']} of {a['flatTotal']})")
 
-        worker_px = [int(v) for v in a_worker.split(",")[:4]]
-        claims.check(worker_px != [255, 102, 0, 255],
+        claims.check(int(a_worker) > 0,
                      f"a Worker's OffscreenCanvas is noised too — same "
-                     f"BaseRenderingContext2D, no document (got {worker_px})")
+                     f"BaseRenderingContext2D, no document ({a_worker} of 4096 "
+                     f"pixels moved)")
+
+        exact = json.loads(s.js(EXACT))
+        claims.check(exact["gridWrong"] == 0,
+                     f"an 8x8 grid of 1x1 solid random colours reads back "
+                     f"exactly, pixel by pixel — fv.pro's check "
+                     f"({exact['gridWrong']} of 64 wrong)")
+        rw, rh, rpx = decode_png(exact["rects"])
+        rects_wrong = 0
+        for i, colour in enumerate(exact["colours"]):
+            want = bytes.fromhex(colour[1:])
+            for y in range(rh):
+                for x in range(i * 10, i * 10 + 10):
+                    o = (y * rw + x) * 4
+                    if rpx[o:o + 3] != want or rpx[o + 3] != 255:
+                        rects_wrong += 1
+        claims.check(rects_wrong == 0,
+                     f"fourteen solid rects encode to exactly their colours — "
+                     f"pixelscan's check ({rects_wrong} of {rw * rh} pixels wrong)")
+        claims.check(exact["resetWrong"] == 0,
+                     f"text makes a canvas noisy and assigning its width makes it "
+                     f"exact again ({exact['resetWrong']} of 1024 wrong after the "
+                     f"reset)")
+
+        blob = json.loads(s.js(BLOB))
+        _, _, blob_px = decode_png(blob["blob"])
+        claims.check(blob_px[:4096].hex() == blob["whole"],
+                     "toBlob() on the main thread matches getImageData byte for "
+                     "byte — the progressive encoder is noised too")
 
     with launch(CORE, {"noise": {"canvasSeed": SEED_B}}) as s:
         b = json.loads(s.js(READ))
@@ -245,6 +351,11 @@ def main():
 
     with launch(CORE, None) as s:
         bare = json.loads(s.js(READ))
+        bare_blob = json.loads(s.js(BLOB))
+        _, _, bare_blob_px = decode_png(bare_blob["blob"])
+        claims.check(bare_blob_px[:4096].hex() != blob["whole"],
+                     "and it is not the unnoised canvas: an unconfigured build's "
+                     "toBlob() differs from seed A's")
         _, _, bare_png = decode_png(bare["dataURL"])
         print(f"  unconfigured: {bare['flatMoved']} pixels moved, "
               f"PNG agrees: {bare_png[:4096].hex() == bare['whole']}")

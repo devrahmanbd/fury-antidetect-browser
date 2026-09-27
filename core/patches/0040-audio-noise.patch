@@ -30,7 +30,7 @@ index 9136c6e6c1..54e611055e 100644
    return std::round(output_position_.hardware_output_latency / factor) * factor;
  }
 diff --git a/third_party/blink/renderer/modules/webaudio/offline_audio_context.cc b/third_party/blink/renderer/modules/webaudio/offline_audio_context.cc
-index 4604be68ad..0730570e4d 100644
+index 4604be68ad..497612857f 100644
 --- a/third_party/blink/renderer/modules/webaudio/offline_audio_context.cc
 +++ b/third_party/blink/renderer/modules/webaudio/offline_audio_context.cc
 @@ -25,6 +25,8 @@
@@ -42,7 +42,7 @@ index 4604be68ad..0730570e4d 100644
  #include "base/metrics/histogram_functions.h"
  #include "base/metrics/histogram_macros.h"
  #include "media/base/audio_glitch_info.h"
-@@ -437,6 +439,46 @@ void OfflineAudioContext::FireCompletionEvent() {
+@@ -437,6 +439,66 @@ void OfflineAudioContext::FireCompletionEvent() {
        return;
      }
  
@@ -67,7 +67,27 @@ index 4604be68ad..0730570e4d 100644
 +          NotShared<DOMFloat32Array> data =
 +              rendered_buffer->getChannelData(channel);
 +          base::span<float> samples = data->AsSpan();
++          // The ORIGINAL value of the previous sample; samples[i - 1] has been
++          // perturbed by the time i is reached.
++          float previous = 0.0f;
 +          for (size_t i = 0; i < samples.size(); ++i) {
++            const float original = samples[i];
++            const bool flat =
++                original == 0.0f ||
++                (i > 0 && original == previous) ||
++                (i + 1 < samples.size() && original == samples[i + 1]);
++            previous = original;
++            // Silence and flat runs stay exact. A graph that renders nothing
++            // — fv.pro's unconnected 0 Hz oscillator, 100 samples — comes out
++            // as exact zeros on every machine, and so does a constant source;
++            // noise there hides nothing and is detectable by comparing with
++            // 0. Measured 27.09.2026: fv.pro called our audio "not real" for
++            // exactly this and passes a real Chrome. What varies between
++            // machines is the shape of a moving signal through the compressor,
++            // and every sample of that is still perturbed.
++            if (flat) {
++              continue;
++            }
 +            uint64_t h = audio_seed;
 +            h = (h ^ (channel * 0x9e3779b9u)) * 0x100000001b3ULL;
 +            h = (h ^ i) * 0x100000001b3ULL;

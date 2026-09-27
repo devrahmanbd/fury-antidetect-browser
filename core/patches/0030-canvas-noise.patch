@@ -1,5 +1,160 @@
+diff --git a/third_party/blink/renderer/core/html/canvas/canvas_async_blob_creator.cc b/third_party/blink/renderer/core/html/canvas/canvas_async_blob_creator.cc
+index 8e9d842904..7d8cd69caa 100644
+--- a/third_party/blink/renderer/core/html/canvas/canvas_async_blob_creator.cc
++++ b/third_party/blink/renderer/core/html/canvas/canvas_async_blob_creator.cc
+@@ -4,6 +4,8 @@
+ 
+ #include "third_party/blink/renderer/core/html/canvas/canvas_async_blob_creator.h"
+ 
++#include "components/fury/fury_noise.h"
++
+ #include "base/location.h"
+ #include "base/metrics/histogram_functions.h"
+ #include "base/metrics/histogram_macros.h"
+@@ -237,6 +239,34 @@ CanvasAsyncBlobCreator::CanvasAsyncBlobCreator(
+ 
+ CanvasAsyncBlobCreator::~CanvasAsyncBlobCreator() = default;
+ 
++void CanvasAsyncBlobCreator::FuryApplyNoise(bool wanted) {
++  uint64_t seed = 0;
++  if (!wanted || !static_bitmap_image_loaded_ ||
++      !fury::GetCanvasNoiseSeed(&seed)) {
++    return;
++  }
++  const SkColorType type = src_data_.colorType();
++  if (!src_data_.addr() || src_data_.rowBytes() == 0 ||
++      src_data_.height() <= 0 ||
++      (type != kBGRA_8888_SkColorType && type != kRGBA_8888_SkColorType)) {
++    return;
++  }
++  const size_t total =
++      src_data_.rowBytes() * static_cast<size_t>(src_data_.height());
++  fury_noised_pixels_.resize(static_cast<wtf_size_t>(total));
++  // SAFETY: src_data_ describes exactly `total` bytes owned by skia_image_.
++  UNSAFE_BUFFERS(
++      memcpy(fury_noised_pixels_.data(), src_data_.addr(), total));
++  fury::ApplyCanvasNoise(seed, base::span(fury_noised_pixels_),
++                         src_data_.width(), src_data_.height(),
++                         src_data_.rowBytes(), /*origin_x=*/0, /*origin_y=*/0,
++                         type == kBGRA_8888_SkColorType
++                             ? fury::ChannelOrder::kBGRA
++                             : fury::ChannelOrder::kRGBA);
++  src_data_.reset(src_data_.info(), fury_noised_pixels_.data(),
++                  src_data_.rowBytes());
++}
++
+ void CanvasAsyncBlobCreator::Dispose() {
+   // Eagerly let go of references to prevent retention of these
+   // resources while any remaining posted tasks are queued.
+diff --git a/third_party/blink/renderer/core/html/canvas/canvas_async_blob_creator.h b/third_party/blink/renderer/core/html/canvas/canvas_async_blob_creator.h
+index 625c3204a0..57433c9d50 100644
+--- a/third_party/blink/renderer/core/html/canvas/canvas_async_blob_creator.h
++++ b/third_party/blink/renderer/core/html/canvas/canvas_async_blob_creator.h
+@@ -30,6 +30,16 @@ class ImageDataBuffer;
+ class CORE_EXPORT CanvasAsyncBlobCreator
+     : public GarbageCollected<CanvasAsyncBlobCreator> {
+  public:
++  // Fury: perturbs the pixels about to be encoded, once, before any of the
++  // three encoding paths (in-thread, off-thread, progressive idle) runs. Must
++  // be called before ScheduleAsyncBlobCreation().
++  //
++  // Before this, toBlob() on the main thread took the progressive path, which
++  // feeds src_data_ straight to ImageEncoder, and came out with the canvas's
++  // real pixels while toDataURL() of the same canvas was noised — the real
++  // rendering, and a contradiction to go with it.
++  void FuryApplyNoise(bool wanted);
++
+   // This enum is used to back an UMA histogram, and should therefore be treated
+   // as append-only. Idle tasks are not implemented for some image types.
+   enum IdleTaskStatus {
+@@ -101,6 +111,8 @@ class CORE_EXPORT CanvasAsyncBlobCreator
+   // see comment above the implementation of ScheduleAsyncBlobCreation.
+   sk_sp<SkImage> skia_image_;
+   SkPixmap src_data_;  // Holds a raw pointer owned by `skia_ìmage`.
++  // When noised, src_data_ points here instead. See FuryApplyNoise().
++  Vector<uint8_t> fury_noised_pixels_;
+   std::unique_ptr<ImageEncoder> encoder_;
+   Vector<unsigned char> encoded_image_;
+   int num_rows_completed_;
+diff --git a/third_party/blink/renderer/core/html/canvas/canvas_rendering_context_host.h b/third_party/blink/renderer/core/html/canvas/canvas_rendering_context_host.h
+index fca8ae9e0e..d2d0c9a3e7 100644
+--- a/third_party/blink/renderer/core/html/canvas/canvas_rendering_context_host.h
++++ b/third_party/blink/renderer/core/html/canvas/canvas_rendering_context_host.h
+@@ -129,6 +129,30 @@ class CORE_EXPORT CanvasRenderingContextHost
+   bool IsRenderingContext2D() const;
+   bool IsImageBitmapRenderingContext() const;
+ 
++  // Fury: whether a readback of this canvas should carry the profile's noise.
++  //
++  // Noise hides what a machine renders its own way: text, curves, anything
++  // antialiased, scaled or blurred. A solid rectangle filled with a known
++  // colour comes out byte-identical on every machine in the world, so noise on
++  // it hides nothing and is the one thing a detector can check exactly — fv.pro
++  // fills an 8x8 grid of random colours and reads it back, pixelscan fills
++  // fourteen solid rects and compares two toDataURL()s. Measured 27.09.2026:
++  // both flagged us for exactly that, and neither flags a real Chrome.
++  //
++  // So a 2D canvas is noised only once something platform-dependent has been
++  // drawn on it (Canvas2DRecorderContext::DrawInternal decides), until the
++  // context is reset. Every other context — WebGL, WebGPU, bitmaprenderer — is
++  // GPU output through and through and keeps its noise unconditionally.
++  void FuryNoteDraw(bool platform_dependent) {
++    if (platform_dependent) {
++      fury_platform_dependent_draw_ = true;
++    }
++  }
++  void FuryResetDraws() { fury_platform_dependent_draw_ = false; }
++  bool FuryWantsCanvasNoise() const {
++    return !IsRenderingContext2D() || fury_platform_dependent_draw_;
++  }
++
+   PlainTextPainter& GetPlainTextPainter();
+ 
+   // Actual RasterMode used for rendering 2d primitives.
+@@ -190,6 +214,7 @@ class CORE_EXPORT CanvasRenderingContextHost
+ 
+  private:
+ 
++  bool fury_platform_dependent_draw_ = false;
+   bool did_record_canvas_size_to_uma_ = false;
+   HostType host_type_ = HostType::kNone;
+   RasterModeHint preferred_2d_raster_mode_ = RasterModeHint::kPreferCPU;
+diff --git a/third_party/blink/renderer/core/html/canvas/html_canvas_element.cc b/third_party/blink/renderer/core/html/canvas/html_canvas_element.cc
+index 4a7dbf745e..2415a38e0f 100644
+--- a/third_party/blink/renderer/core/html/canvas/html_canvas_element.cc
++++ b/third_party/blink/renderer/core/html/canvas/html_canvas_element.cc
+@@ -1426,6 +1426,9 @@ String HTMLCanvasElement::ToDataURLInternal(
+         ImageDataBuffer::Create(image_bitmap);
+     if (!data_buffer)
+       return String("data:,");
++    if (FuryWantsCanvasNoise()) {
++      data_buffer->ApplyFuryNoise();
++    }
+ 
+     String data_url = data_buffer->ToDataURL(encoding_mime_type, quality);
+     base::TimeDelta elapsed_time = base::TimeTicks::Now() - start_time;
+@@ -1532,6 +1535,7 @@ void HTMLCanvasElement::toBlob(V8BlobCallback* callback,
+         image_bitmap, options,
+         CanvasAsyncBlobCreator::kHTMLCanvasToBlobCallback, callback, start_time,
+         GetExecutionContext());
++    async_creator->FuryApplyNoise(FuryWantsCanvasNoise());
+   }
+ 
+   if (async_creator) {
+diff --git a/third_party/blink/renderer/core/offscreencanvas/offscreen_canvas.cc b/third_party/blink/renderer/core/offscreencanvas/offscreen_canvas.cc
+index fab79aa8c5..e0c219b118 100644
+--- a/third_party/blink/renderer/core/offscreencanvas/offscreen_canvas.cc
++++ b/third_party/blink/renderer/core/offscreencanvas/offscreen_canvas.cc
+@@ -573,6 +573,7 @@ ScriptPromise<Blob> OffscreenCanvas::convertToBlob(
+     auto* async_creator = MakeGarbageCollected<CanvasAsyncBlobCreator>(
+         image_bitmap, options, function_type, start_time, execution_context,
+         resolver);
++    async_creator->FuryApplyNoise(FuryWantsCanvasNoise());
+     async_creator->ScheduleAsyncBlobCreation(options->quality());
+     return resolver->Promise();
+   }
 diff --git a/third_party/blink/renderer/modules/canvas/canvas2d/base_rendering_context_2d.cc b/third_party/blink/renderer/modules/canvas/canvas2d/base_rendering_context_2d.cc
-index 38528f7b8d..2d377da329 100644
+index 89fcf5f32b..0fd4fcf4bb 100644
 --- a/third_party/blink/renderer/modules/canvas/canvas2d/base_rendering_context_2d.cc
 +++ b/third_party/blink/renderer/modules/canvas/canvas2d/base_rendering_context_2d.cc
 @@ -4,6 +4,8 @@
@@ -11,7 +166,7 @@ index 38528f7b8d..2d377da329 100644
  #include <cmath>
  #include <cstdint>
  #include <cstdlib>
-@@ -514,6 +516,35 @@ ImageData* BaseRenderingContext2D::getImageDataInternal(
+@@ -516,6 +518,42 @@ ImageData* BaseRenderingContext2D::getImageDataInternal(
            snapshot->PaintImageForCurrentFrame().GetSkImageInfo().bounds();
        DCHECK(!bounds.intersect(SkIRect::MakeXYWH(sx, sy, sw, sh)));
      }
@@ -28,8 +183,15 @@ index 38528f7b8d..2d377da329 100644
 +    // BaseRenderingContext2D backs both CanvasRenderingContext2D and
 +    // OffscreenCanvasRenderingContext2D, so this covers canvas inside Workers
 +    // with the same change.
++    //
++    // Only once something platform-dependent has been drawn: a canvas holding
++    // nothing but solid rects reads back the same on every machine, and noise
++    // there is what gives us away. See
++    // CanvasRenderingContextHost::FuryWantsCanvasNoise.
 +    uint64_t noise_seed = 0;
-+    if (fury::GetCanvasNoiseSeed(&noise_seed)) {
++    CanvasRenderingContextHost* fury_host = GetCanvasRenderingContextHost();
++    if (fury::GetCanvasNoiseSeed(&noise_seed) &&
++        (!fury_host || fury_host->FuryWantsCanvasNoise())) {
 +      SkPixmap noised = image_data->GetSkPixmap();
 +      if (noised.writable_addr() && noised.rowBytes() > 0) {
 +        fury::ApplyCanvasNoise(
@@ -47,8 +209,89 @@ index 38528f7b8d..2d377da329 100644
    }
  
    return image_data;
+diff --git a/third_party/blink/renderer/modules/canvas/canvas2d/canvas_2d_recorder_context.cc b/third_party/blink/renderer/modules/canvas/canvas2d/canvas_2d_recorder_context.cc
+index 1d6240bf07..f1a73ff14d 100644
+--- a/third_party/blink/renderer/modules/canvas/canvas2d/canvas_2d_recorder_context.cc
++++ b/third_party/blink/renderer/modules/canvas/canvas2d/canvas_2d_recorder_context.cc
+@@ -849,6 +849,50 @@ void Canvas2DRecorderContext::ResetInternal() {
+ 
+   ValidateStateStack();
+   origin_tainted_by_content_ = false;
++
++  // A reset canvas — reset(), or width/height assigned — is blank again, and
++  // whatever was drawn before no longer reaches a readback.
++  if (CanvasRenderingContextHost* host = GetCanvasRenderingContextHost()) {
++    host->FuryResetDraws();
++  }
++}
++
++void Canvas2DRecorderContext::FuryNoteDraw(
++    const CanvasRenderingContext2DState& state,
++    CanvasRenderingContext2DState::PaintType paint_type,
++    CanvasPerformanceMonitor::DrawType draw_type,
++    const gfx::RectF& bounds) {
++  CanvasRenderingContextHost* host = GetCanvasRenderingContextHost();
++  if (!host) {
++    return;
++  }
++  using DrawType = CanvasPerformanceMonitor::DrawType;
++  bool platform_dependent = true;
++  if (draw_type == DrawType::kImageData) {
++    // putImageData: the page's own bytes, copied.
++    platform_dependent = false;
++  } else if (draw_type == DrawType::kRectangle &&
++             paint_type == CanvasRenderingContext2DState::kFillPaintType) {
++    // fillRect is exact only in the plain case: a solid colour, fully
++    // opaque, source-over, on whole pixels, with nothing blurred. Any
++    // antialiased edge, blend, gradient, pattern, shadow or filter is
++    // rasteriser arithmetic, and that differs between machines.
++    const CanvasStyle& style = state.Style(paint_type);
++    const AffineTransform& t = state.GetTransform();
++    const bool whole_pixels =
++        t.IsIdentityOrTranslation() && t.E() == std::round(t.E()) &&
++        t.F() == std::round(t.F()) && bounds.x() == std::round(bounds.x()) &&
++        bounds.y() == std::round(bounds.y()) &&
++        bounds.right() == std::round(bounds.right()) &&
++        bounds.bottom() == std::round(bounds.bottom());
++    platform_dependent =
++        !whole_pixels || style.GetCanvasGradient() ||
++        style.GetCanvasPattern() || state.ShouldDrawShadows() ||
++        state.IsFilterUnresolved() || state.IsFilterResolved() ||
++        state.GlobalAlpha() != 1.0 ||
++        state.GlobalComposite() != SkBlendMode::kSrcOver;
++  }
++  host->FuryNoteDraw(platform_dependent);
+ }
+ 
+ void Canvas2DRecorderContext::reset() {
+diff --git a/third_party/blink/renderer/modules/canvas/canvas2d/canvas_2d_recorder_context.h b/third_party/blink/renderer/modules/canvas/canvas2d/canvas_2d_recorder_context.h
+index 91dad8914b..b9bfc40219 100644
+--- a/third_party/blink/renderer/modules/canvas/canvas2d/canvas_2d_recorder_context.h
++++ b/third_party/blink/renderer/modules/canvas/canvas2d/canvas_2d_recorder_context.h
+@@ -490,6 +490,13 @@ class MODULES_EXPORT Canvas2DRecorderContext : public CanvasPath {
+     return nullptr;
+   }
+ 
++  // Fury: tells the host whether this draw is one a machine renders its own
++  // way. See CanvasRenderingContextHost::FuryWantsCanvasNoise.
++  void FuryNoteDraw(const CanvasRenderingContext2DState& state,
++                    CanvasRenderingContext2DState::PaintType paint_type,
++                    CanvasPerformanceMonitor::DrawType draw_type,
++                    const gfx::RectF& bounds);
++
+   virtual bool HasAlpha() const = 0;
+ 
+   virtual bool IsDesynchronized() const { NOTREACHED(); }
+@@ -804,6 +811,7 @@ void Canvas2DRecorderContext::DrawInternal(
+     }
+   }
+   const CanvasRenderingContext2DState& state = GetState();
++  FuryNoteDraw(state, paint_type, draw_type, bounds);
+   SkBlendMode global_composite = state.GlobalComposite();
+   if (ShouldUseCompositedDraw(paint_type, image_type)) {
+     WillDraw(gfx::SkIRectToRect(clip_bounds), draw_type);
 diff --git a/third_party/blink/renderer/platform/graphics/image_data_buffer.cc b/third_party/blink/renderer/platform/graphics/image_data_buffer.cc
-index c76f6553e1..63bb51d5ed 100644
+index d05ea261a9..f1caeebbd3 100644
 --- a/third_party/blink/renderer/platform/graphics/image_data_buffer.cc
 +++ b/third_party/blink/renderer/platform/graphics/image_data_buffer.cc
 @@ -32,6 +32,8 @@
@@ -58,22 +301,21 @@ index c76f6553e1..63bb51d5ed 100644
 +#include "components/fury/fury_noise.h"
 +
  #include "base/compiler_specific.h"
+ #include "base/logging.h"
  #include "base/memory/ptr_util.h"
- #include "third_party/blink/renderer/platform/image-encoders/image_encoder_utils.h"
-@@ -110,15 +112,51 @@ std::unique_ptr<ImageDataBuffer> ImageDataBuffer::Create(
-       base::WrapUnique(new ImageDataBuffer(image));
-   if (!buffer->IsValid())
-     return nullptr;
-+  buffer->ApplyFuryNoise();
+@@ -122,6 +124,43 @@ std::unique_ptr<ImageDataBuffer> ImageDataBuffer::Create(
    return buffer;
  }
  
-+// Both toDataURL() and toBlob() encode through an ImageDataBuffer, for
-+// HTMLCanvasElement and OffscreenCanvas alike, so this one place covers every
-+// encoded readback. getImageData() is perturbed separately but by the SAME
-+// function on the same absolute coordinates, so the two agree — a site that
-+// compares a pixel from getImageData against the decoded PNG sees no
-+// contradiction.
++// Called by toDataURL() when the canvas wants noise — see
++// CanvasRenderingContextHost::FuryWantsCanvasNoise. It used to run inside
++// Create() for every caller, which also noised video snapshots and the
++// accessibility and inspector paths, and gave the canvas no say. toBlob() and
++// convertToBlob() noise their source pixels once in CanvasAsyncBlobCreator,
++// because their progressive encoder never passes through here.
++// getImageData() is perturbed separately but by the SAME function on the same
++// absolute coordinates, so all of them agree — a site that compares a pixel
++// from getImageData against the decoded PNG sees no contradiction.
 +void ImageDataBuffer::ApplyFuryNoise() {
 +  uint64_t seed = 0;
 +  if (!fury::GetCanvasNoiseSeed(&seed)) {
@@ -105,20 +347,13 @@ index c76f6553e1..63bb51d5ed 100644
  std::unique_ptr<ImageDataBuffer> ImageDataBuffer::Create(
      const SkPixmap& pixmap) {
    std::unique_ptr<ImageDataBuffer> buffer =
-       base::WrapUnique(new ImageDataBuffer(pixmap));
-   if (!buffer->IsValid())
-     return nullptr;
-+  buffer->ApplyFuryNoise();
-   return buffer;
- }
- 
 diff --git a/third_party/blink/renderer/platform/graphics/image_data_buffer.h b/third_party/blink/renderer/platform/graphics/image_data_buffer.h
-index 7788473df7..742549b7bd 100644
+index 7788473df7..880c8aeca7 100644
 --- a/third_party/blink/renderer/platform/graphics/image_data_buffer.h
 +++ b/third_party/blink/renderer/platform/graphics/image_data_buffer.h
-@@ -65,8 +65,15 @@ class PLATFORM_EXPORT ImageDataBuffer {
- 
-   bool IsValid() { return is_valid_; }  // Only used by Create()
+@@ -51,6 +51,12 @@ class PLATFORM_EXPORT ImageDataBuffer {
+       scoped_refptr<StaticBitmapImage>);
+   static std::unique_ptr<ImageDataBuffer> Create(const SkPixmap&);
  
 +  // Applies the configured canvas noise to an owned copy, and repoints
 +  // pixmap_ at it. Doing it in place would mutate the live canvas and make the
@@ -126,6 +361,11 @@ index 7788473df7..742549b7bd 100644
 +  // first, which is worse than not perturbing at all.
 +  void ApplyFuryNoise();
 +
+   String ToDataURL(const ImageEncodingMimeType mime_type,
+                    const double& quality) const;
+   bool EncodeImage(const ImageEncodingMimeType mime_type,
+@@ -67,6 +73,7 @@ class PLATFORM_EXPORT ImageDataBuffer {
+ 
    sk_sp<SkImage> retained_image_;
    SkPixmap pixmap_;
 +  Vector<uint8_t> fury_noised_pixels_;

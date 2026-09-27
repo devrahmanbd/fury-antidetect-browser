@@ -528,7 +528,9 @@ pub const CORE_CONFIG_KEYS: &[&str] = &[
     "screen.chromeWidthDelta",
     "screen.colorDepth",
     "screen.devicePixelRatio",
+    "screen.height",
     "screen.scrollbarWidth",
+    "screen.width",
     "speech.voices",
     "webrtc.ipHandlingPolicy",
 ];
