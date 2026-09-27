@@ -2043,6 +2043,26 @@ impl Agent {
         profile_key: Option<[u8; 32]>,
         cdp: bool,
     ) -> anyhow::Result<serde_json::Value> {
+        // The lock is renewed from here, before the exit check and the bundle
+        // pull, either of which can take longer than the lock lives. Aborted by
+        // the guard if the launch fails, so a lock is never kept alive for a
+        // browser that did not start. See sync::keep_alive.
+        struct AbortOnDrop(Option<tokio::task::JoinHandle<()>>);
+        impl Drop for AbortOnDrop {
+            fn drop(&mut self) {
+                if let Some(h) = self.0.take() {
+                    h.abort();
+                }
+            }
+        }
+        let mut heartbeat_guard = AbortOnDrop(match (server.as_ref(), lock_token.as_ref()) {
+            (Some(srv), Some(token)) => Some(crate::sync::keep_alive(
+                srv.clone(),
+                profile_id.to_string(),
+                token.clone(),
+            )),
+            _ => None,
+        });
         {
             let mut running = self.running.lock().await;
             if let Some(existing) = running.get_mut(profile_id) {
@@ -2477,14 +2497,8 @@ impl Agent {
             self.store.touch_opened(&profile.id).await?;
         }
 
-        let heartbeat = match (server.as_ref(), lock_token.as_ref()) {
-            (Some(srv), Some(token)) => Some(crate::sync::keep_alive(
-                srv.clone(),
-                profile.id.clone(),
-                token.clone(),
-            )),
-            _ => None,
-        };
+        // Already beating since the launch began; the running entry owns it now.
+        let heartbeat = heartbeat_guard.0.take();
 
         self.running.lock().await.insert(
             profile.id.clone(),

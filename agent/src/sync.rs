@@ -170,17 +170,20 @@ impl Server {
         Ok(())
     }
 
-    async fn beat(&self, profile_id: &str, lock_token: &str) -> anyhow::Result<()> {
+    async fn beat(&self, profile_id: &str, lock_token: &str) -> anyhow::Result<Beat> {
         let res = Self::client()?
             .post(format!("{}/v1/profiles/{profile_id}/lock/heartbeat", self.url))
             .bearer_auth(&self.token)
             .json(&serde_json::json!({ "lock_token": lock_token }))
             .send()
             .await?;
+        if res.status() == reqwest::StatusCode::CONFLICT {
+            return Ok(Beat::Lost);
+        }
         if !res.status().is_success() {
             anyhow::bail!("heartbeat refused ({})", res.status());
         }
-        Ok(())
+        Ok(Beat::Held)
     }
 }
 
@@ -192,6 +195,24 @@ impl Server {
 const BEAT_EVERY: Duration = Duration::from_secs(30);
 
 /// Keep a lock alive until the returned handle is aborted.
+/// What the server said to one renewal.
+enum Beat {
+    Held,
+    /// 409: the lock is not ours any more -- it lapsed, or someone took the
+    /// profile over. No later renewal can bring it back.
+    Lost,
+}
+
+/// Renew a profile's lock until the handle is aborted.
+///
+/// Started when the launch starts, not when the browser does. A lock is taken
+/// by the shell for ninety seconds before it calls the agent, and a team launch
+/// can outlast that: a tester's launch spent fifteen seconds on an exit that did
+/// not answer and two minutes pulling a 6 MB bundle through Cloudflare,
+/// 27.09.2026. The renewals began after all of that, found the lock already
+/// lapsed, and the close then could not upload -- "this profile is not locked
+/// by you" -- so the session, saved passwords included, never reached the
+/// server.
 pub fn keep_alive(
     server: Server,
     profile_id: String,
@@ -200,11 +221,27 @@ pub fn keep_alive(
     tokio::spawn(async move {
         loop {
             tokio::time::sleep(BEAT_EVERY).await;
-            if let Err(e) = server.beat(&profile_id, &lock_token).await {
-                // Logged and retried rather than fatal: a lock that lapses is
-                // recoverable, and killing a running browser because one
-                // request failed is not.
-                tracing::warn!(profile = %profile_id, error = %e, "heartbeat failed");
+            match server.beat(&profile_id, &lock_token).await {
+                Ok(Beat::Held) => {}
+                Ok(Beat::Lost) => {
+                    // Said once, then stopped. It used to be retried every
+                    // thirty seconds for as long as the browser ran: 1,098
+                    // identical lines in one afternoon's log, each true and
+                    // none of them useful after the first.
+                    tracing::warn!(
+                        profile = %profile_id,
+                        "this machine no longer holds the profile's lock (it lapsed, or it \
+                         was taken over). The browser keeps running; closing it will keep \
+                         the session here rather than upload it"
+                    );
+                    return;
+                }
+                Err(e) => {
+                    // Logged and retried rather than fatal: a request that
+                    // failed is not a lock that is gone, and killing a running
+                    // browser because one request failed is not an answer.
+                    tracing::warn!(profile = %profile_id, error = %e, "heartbeat failed");
+                }
             }
         }
     })
