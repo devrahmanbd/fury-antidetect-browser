@@ -234,6 +234,43 @@ fn sub_seed(seed: u64, purpose: &str) -> u32 {
     (mix(h) & 0x7fff_ffff) as u32
 }
 
+/// The brand list real Chrome of this major version sends, in its order.
+///
+/// Chrome does not have one GREASE brand: it derives it from the major version
+/// (components/embedder_support/user_agent_utils.cc, GenerateBrandVersionList),
+/// and the order of the three entries too. This used to be the literal list of
+/// Chrome 150 — "Not;A=Brand/8, Chromium, Google Chrome" — and stayed that way
+/// through the move to 153, whose real Chrome sends "Google Chrome, Not_A
+/// Brand/8, Chromium" (baselines/chrome-153-windows-x64.json, 27.09.2026). Every
+/// profile carried a Sec-CH-UA no Chrome 153 sends. Ported from the 155 source
+/// so the next milestone moves it by itself.
+pub fn chrome_brand_list(major: u32, version: &str, full: bool) -> Vec<String> {
+    const GREASEY_CHARS: [&str; 11] = [" ", "(", ":", "-", ".", "/", ")", ";", "=", "?", "_"];
+    const GREASED_VERSIONS: [&str; 3] = ["8", "99", "24"];
+    const ORDERS: [[usize; 3]; 6] =
+        [[0, 1, 2], [0, 2, 1], [1, 0, 2], [1, 2, 0], [2, 0, 1], [2, 1, 0]];
+    let seed = major as usize;
+    let grease_brand = format!(
+        "Not{}A{}Brand",
+        GREASEY_CHARS[seed % GREASEY_CHARS.len()],
+        GREASEY_CHARS[(seed + 1) % GREASEY_CHARS.len()]
+    );
+    let grease_version = GREASED_VERSIONS[seed % GREASED_VERSIONS.len()];
+    let grease_version = if full { format!("{grease_version}.0.0.0") } else { grease_version.to_string() };
+    let listed = [
+        format!("{grease_brand}/{grease_version}"),
+        format!("Chromium/{version}"),
+        format!("Google Chrome/{version}"),
+    ];
+    // ShuffleBrandList: entry i goes to position order[i].
+    let order = ORDERS[seed % ORDERS.len()];
+    let mut out = vec![String::new(); 3];
+    for (i, entry) in listed.into_iter().enumerate() {
+        out[order[i]] = entry;
+    }
+    out
+}
+
 impl Persona {
     /// Builds the JSON the patched core reads.
     ///
@@ -246,16 +283,9 @@ impl Persona {
             .user_agent_template
             .replace("{CHROME_MAJOR}", &ctx.chrome_major.to_string());
 
-        let brands = vec![
-            "Not;A=Brand/8".to_string(),
-            format!("Chromium/{}", ctx.chrome_major),
-            format!("Google Chrome/{}", ctx.chrome_major),
-        ];
-        let full_version_list = vec![
-            "Not;A=Brand/8.0.0.0".to_string(),
-            format!("Chromium/{}", ctx.chrome_full_version),
-            format!("Google Chrome/{}", ctx.chrome_full_version),
-        ];
+        let brands = chrome_brand_list(ctx.chrome_major, &ctx.chrome_major.to_string(), false);
+        let full_version_list =
+            chrome_brand_list(ctx.chrome_major, &ctx.chrome_full_version, true);
 
         let mut config = serde_json::json!({
             "schema_version": crate::FINGERPRINT_SCHEMA_VERSION,
@@ -747,8 +777,8 @@ mod tests {
             languages: vec!["en-US".into(), "en".into()],
             ui_locale: "en-US".into(),
             geolocation: Some((40.7128, -74.0060)),
-            chrome_major: 153,
-            chrome_full_version: "153.0.8010.37".into(),
+            chrome_major: 155,
+            chrome_full_version: "155.0.8059.12".into(),
         }
     }
 
@@ -1001,6 +1031,25 @@ mod tests {
         let c = p.derive_core_config(1, &ctx());
         let brands = c["clientHints"]["brands"].as_array().unwrap();
         assert!(brands.iter().any(|b| b.as_str().unwrap().starts_with("Google Chrome/")));
+    }
+
+    #[test]
+    fn brands_are_what_real_chrome_of_that_version_sends() {
+        // Measured: baselines/chrome-150-macos-arm64.json and
+        // chrome-153-windows-x64.json, real Chrome, same probe.
+        assert_eq!(
+            chrome_brand_list(150, "150", false),
+            ["Not;A=Brand/8", "Chromium/150", "Google Chrome/150"]
+        );
+        assert_eq!(
+            chrome_brand_list(153, "153.0.8010.37", true),
+            ["Google Chrome/153.0.8010.37", "Not_A Brand/8.0.0.0", "Chromium/153.0.8010.37"]
+        );
+        // What the 155 source computes (seed 155: "(" ":", 24, order {2,1,0}).
+        assert_eq!(
+            chrome_brand_list(155, "155", false),
+            ["Google Chrome/155", "Chromium/155", "Not(A:Brand/24"]
+        );
     }
 
     /// The three checks added when docs/16 asked for a persona that refuses to
