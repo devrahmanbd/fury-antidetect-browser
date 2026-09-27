@@ -83,6 +83,7 @@ core/
     ├── refresh.sh        # снять изменения из дерева обратно в патч
     ├── rebase.sh         # переехать на новый upstream-тег
     ├── link-icons.sh     # положить иконки Fury в дерево — обязательный шаг, см. ниже
+    ├── link-icons-windows.ps1  # то же для Windows (.ico, плитки, логотипы); build.sh зовёт сам
     ├── link-widevine.sh  # положить CDM из установленного Chrome рядом со сборкой
     └── build.sh          # gn gen + autoninja
 

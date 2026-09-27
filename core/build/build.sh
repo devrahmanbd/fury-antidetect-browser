@@ -70,6 +70,17 @@ case "$TARGET" in
       exit 1 ;;
     esac
 
+    # Fury's icons into the tree, every time. Nothing did this on Windows until
+    # 0.2.4: link-icons.sh is macOS-only, so every Windows core wore Chromium's
+    # icon on the taskbar. Cheap and idempotent -- the files are regenerated
+    # from assets/icon.png and ninja only relinks what they feed.
+    echo "==> Fury icons (link-icons-windows.ps1)"
+    powershell.exe -NoProfile -ExecutionPolicy Bypass \
+      -File "$(cygpath -w "$CORE_DIR/build/link-icons-windows.ps1")" || {
+      echo "!! could not put Fury's icons into the tree; refusing to build a Chromium-branded core" >&2
+      exit 1
+    }
+
     # Point Chromium at Visual Studio by hand, because it cannot find it itself
     # from here.
     #
