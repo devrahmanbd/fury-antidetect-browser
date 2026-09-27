@@ -140,7 +140,13 @@ pub async fn cli(args: &[String]) -> anyhow::Result<()> {
     let mut email = None;
     let mut org_name = None;
     let mut org_id = None;
-    let mut role = "owner".to_string();
+    // Unset until the organisation is known: a new one gets its owner, an
+    // existing one gets a member. The default used to be "owner" everywhere,
+    // and for an existing organisation that refused and said "invite as admin
+    // instead" -- steering towards the one role that sees every project, when
+    // the person inviting had meant to hand over one. A tester's colleague
+    // could see a project nobody had granted him, 27.09.2026.
+    let mut role: Option<String> = None;
 
     let mut it = args.iter();
     while let Some(arg) = it.next() {
@@ -148,18 +154,16 @@ pub async fn cli(args: &[String]) -> anyhow::Result<()> {
             "--email" => email = it.next().cloned(),
             "--org" => org_name = it.next().cloned(),
             "--org-id" => org_id = it.next().map(|v| v.parse()).transpose()?,
-            "--role" => {
-                if let Some(v) = it.next() {
-                    role = v.clone();
-                }
-            }
+            "--role" => role = it.next().cloned(),
             other => anyhow::bail!("unknown argument: {other}"),
         }
     }
 
     let email = email.ok_or_else(|| anyhow::anyhow!("--email is required"))?;
-    if !matches!(role.as_str(), "owner" | "admin" | "manager" | "member") {
-        anyhow::bail!("--role must be one of: owner, admin, manager, member");
+    if let Some(r) = role.as_deref() {
+        if !matches!(r, "owner" | "admin" | "manager" | "member") {
+            anyhow::bail!("--role must be one of: owner, admin, manager, member");
+        }
     }
 
     let db = crate::connect().await?;
@@ -176,8 +180,14 @@ pub async fn cli(args: &[String]) -> anyhow::Result<()> {
 
     // An owner is what a new organisation gets; joining an existing one as
     // owner would make a second, which the ORK design has no story for.
+    let role = role.unwrap_or_else(|| {
+        if matches!(org, Org::New(_)) { "owner" } else { "member" }.to_string()
+    });
     if matches!(org, Org::Existing(_)) && role == "owner" {
-        anyhow::bail!("an existing organisation already has an owner — invite as admin instead");
+        anyhow::bail!(
+            "an existing organisation already has an owner. Invite as member and grant the \
+             projects this person needs; admin sees every project in the organisation"
+        );
     }
 
     // The `invite` command runs as the operator on the machine, not as a
