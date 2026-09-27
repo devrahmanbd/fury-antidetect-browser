@@ -647,6 +647,39 @@ AdsPower (сентябрь): ограничения доступа к «чувс
 (Linux не цель), «вставить как человек» (часть 3.5, а 3.5 начинается
 с измерения).
 
+
+## Ядра на 27.09.2026
+
+Пересмотр одной таблицы, к выходу 0.2.3. Источники первичные, кроме Dolphin.
+
+| Продукт | Ядро | Источник |
+|---|---|---|
+| **Fury 0.2.3** | **Chrome 155.0.8059.12** (Windows; macOS пока 153) | этот репозиторий, v0.2.3 |
+| Octo Browser | 154 (с 24.09) | docs.octobrowser.net, Octium changelog |
+| AdsPower | 153 (с 23.09) | adspower.com/release |
+| Multilogin (Mimic) | 153 (22–23.09) | multilogin.com/release-notes |
+| Undetectable | 153 (15.09) | undetectable.io/blog, 2.51.0 |
+| GoLogin Orbita, десктоп | 152 | их CDN: `orbita-browser-latest-152.*`, 153 и выше отвечают 404 |
+| GoLogin Orbita, Android | 151 (03.09) | gologin.com/release-notes |
+| CloakBrowser | 152.0.7977.82 (23.09), macOS 151 | GitHub releases |
+| Donut Browser (Wayfern) | 152.0.7977.64 | donutbrowser.com/wayfern.json |
+| ShardX / ShardBrowser | 152 (13.09) | README, v2.0.3 |
+| Kameleo (Chroma) | 152 (24.08) | kameleo.io/browser-kernel-releases |
+| Incogniton | 152 (10.09) | docs.incogniton.com/changelog |
+| Linken Sphere | 151 (11.08) | ls.app/version-history, v2.21.0 |
+| fingerprint-chromium | 148 (21.06), с тех пор тишина | GitHub releases |
+| MoreLogin | 148 на июнь, свежее не публиковали | support.morelogin.com |
+| Dolphin Anty | 144, низкая уверенность: журнала изменений нет | блог dolphin-anty.com |
+| Camoufox | Firefox 152 (01.09) | GitHub releases |
+| Vision, NSTBrowser | не нашли | публичных номеров ядра нет |
+
+155 нет ни у кого, ближайший Octo на 154. Оговорка, которую надо держать в
+голове: на 27.09 Google отдаёт 155 только 0.5% stable (early stable с 23.09),
+остальные на 153.0.8010.53/.54 и 154.0.8037.57/.58 (versionhistory API,
+`fraction`). Профиль на 155 первую неделю в маленькой, но настоящей группе, и
+потом дольше всех актуален. Отставание мы уже проходили, и именно за него
+fv.pro ругался на 0.2.2.
+
 ## Ключевое наблюдение
 
 **Открытой ниши «OSS + своё Chromium-ядро + командная работа» сегодня нет.**
