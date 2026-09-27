@@ -1,5 +1,5 @@
 diff --git a/third_party/blink/renderer/core/scroll/scrollbar_theme_aura.cc b/third_party/blink/renderer/core/scroll/scrollbar_theme_aura.cc
-index 83845c67fe..63de331f6b 100644
+index 06570a6566..5bc4c24419 100644
 --- a/third_party/blink/renderer/core/scroll/scrollbar_theme_aura.cc
 +++ b/third_party/blink/renderer/core/scroll/scrollbar_theme_aura.cc
 @@ -30,6 +30,8 @@
@@ -77,7 +77,7 @@ index 83845c67fe..63de331f6b 100644
      return kScrollbarThicknessForWebTests * Proportion(scrollbar_width) *
             scale_from_dip;
 diff --git a/third_party/blink/renderer/core/scroll/scrollbar_theme_fluent.cc b/third_party/blink/renderer/core/scroll/scrollbar_theme_fluent.cc
-index 1d8e5e1814..9e24886d52 100644
+index 13b7f14ee4..2680244f37 100644
 --- a/third_party/blink/renderer/core/scroll/scrollbar_theme_fluent.cc
 +++ b/third_party/blink/renderer/core/scroll/scrollbar_theme_fluent.cc
 @@ -4,6 +4,8 @@
@@ -126,7 +126,7 @@ index 1d8e5e1814..9e24886d52 100644
  }
  
 diff --git a/third_party/blink/renderer/core/scroll/scrollbar_theme_mac.cc b/third_party/blink/renderer/core/scroll/scrollbar_theme_mac.cc
-index b3bd1d9dc2..60c97f4bf5 100644
+index ddeefff4fd..1351e3ff75 100644
 --- a/third_party/blink/renderer/core/scroll/scrollbar_theme_mac.cc
 +++ b/third_party/blink/renderer/core/scroll/scrollbar_theme_mac.cc
 @@ -25,6 +25,8 @@
@@ -138,7 +138,7 @@ index b3bd1d9dc2..60c97f4bf5 100644
  #include <variant>
  
  #include "skia/ext/skia_utils_mac.h"
-@@ -324,12 +326,56 @@ int ScrollbarThemeMac::ScrollbarThickness(
+@@ -322,12 +324,56 @@ int ScrollbarThemeMac::ScrollbarThickness(
      EScrollbarWidth scrollbar_width) const {
    if (scrollbar_width == EScrollbarWidth::kNone)
      return 0;
@@ -192,6 +192,6 @@ index b3bd1d9dc2..60c97f4bf5 100644
 +      return *width == 0;
 +    }
 +  }
-   return PreferOverlayScrollerStyle();
+   return OverlayScrollbarsEnabled();
  }
  

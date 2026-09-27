@@ -1,8 +1,8 @@
 diff --git a/chrome/browser/bookmarks/BUILD.gn b/chrome/browser/bookmarks/BUILD.gn
-index edd4475ea0..63d2b961b8 100644
+index 47aa31c99e..6bef19a1f6 100644
 --- a/chrome/browser/bookmarks/BUILD.gn
 +++ b/chrome/browser/bookmarks/BUILD.gn
-@@ -58,6 +58,7 @@ source_set("impl") {
+@@ -63,6 +63,7 @@ source_set("impl") {
    public_deps = [ "//chrome/browser:browser_public_dependencies" ]
  
    deps = [
@@ -40,10 +40,10 @@ index e5fb1fd803..3974083d3f 100644
    if (profile->GetUserData(kBookmarkFaviconFetcherKey)) {
      return;
 diff --git a/chrome/browser/extensions/BUILD.gn b/chrome/browser/extensions/BUILD.gn
-index 1046137d6a..774494089a 100644
+index 563383fc71..ab27d8d8df 100644
 --- a/chrome/browser/extensions/BUILD.gn
 +++ b/chrome/browser/extensions/BUILD.gn
-@@ -583,6 +583,7 @@ source_set("extensions") {
+@@ -590,6 +590,7 @@ source_set("extensions") {
      "//components/enterprise/browser/identifiers",
      "//components/enterprise/browser/promotion",
      "//components/favicon/content",
@@ -52,7 +52,7 @@ index 1046137d6a..774494089a 100644
      "//components/guest_view/common",
      "//components/infobars/content",
 diff --git a/chrome/browser/extensions/api/passwords_private/passwords_private_delegate_impl.cc b/chrome/browser/extensions/api/passwords_private/passwords_private_delegate_impl.cc
-index dea7e79766..d81a575620 100644
+index 9103a6f80a..78cd3e301b 100644
 --- a/chrome/browser/extensions/api/passwords_private/passwords_private_delegate_impl.cc
 +++ b/chrome/browser/extensions/api/passwords_private/passwords_private_delegate_impl.cc
 @@ -4,6 +4,9 @@
@@ -65,7 +65,7 @@ index dea7e79766..d81a575620 100644
  #include <memory>
  #include <optional>
  #include <string>
-@@ -579,6 +582,16 @@ void PasswordsPrivateDelegateImpl::RequestPlaintextPassword(
+@@ -580,6 +583,16 @@ void PasswordsPrivateDelegateImpl::RequestPlaintextPassword(
      int id,
      api::passwords_private::PlaintextReason reason,
      PlaintextPasswordCallback callback) {
@@ -83,7 +83,7 @@ index dea7e79766..d81a575620 100644
        kPasswordManagerAuthValidity, GetReauthPurpose(reason),
        base::BindOnce(
 diff --git a/chrome/browser/ui/passwords/settings/BUILD.gn b/chrome/browser/ui/passwords/settings/BUILD.gn
-index a3c75c684f..9414423331 100644
+index 444c0a4065..0b11e32554 100644
 --- a/chrome/browser/ui/passwords/settings/BUILD.gn
 +++ b/chrome/browser/ui/passwords/settings/BUILD.gn
 @@ -28,6 +28,7 @@ source_set("impl") {

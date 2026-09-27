@@ -1,8 +1,8 @@
 diff --git a/chrome/browser/devtools/BUILD.gn b/chrome/browser/devtools/BUILD.gn
-index 92b4d3289f..bb34ed8b8f 100644
+index 2e694986c7..534262430c 100644
 --- a/chrome/browser/devtools/BUILD.gn
 +++ b/chrome/browser/devtools/BUILD.gn
-@@ -131,6 +131,7 @@ static_library("devtools") {
+@@ -132,6 +132,7 @@ static_library("devtools") {
      "//chrome/browser/ui/browser_window:create_browser_window",
      "//chrome/browser/ui/dialogs",
      "//chrome/browser/ui/select_file_policy",
@@ -11,7 +11,7 @@ index 92b4d3289f..bb34ed8b8f 100644
      "//components/page_load_metrics/browser/observers/ad_metrics",
  
 diff --git a/chrome/browser/devtools/devtools_availability_checker.cc b/chrome/browser/devtools/devtools_availability_checker.cc
-index 16734088f9..048e908ec0 100644
+index 19a9f4d762..03df037c2a 100644
 --- a/chrome/browser/devtools/devtools_availability_checker.cc
 +++ b/chrome/browser/devtools/devtools_availability_checker.cc
 @@ -7,6 +7,8 @@
@@ -20,10 +20,10 @@ index 16734088f9..048e908ec0 100644
  #include "base/check.h"
 +#include "base/command_line.h"
 +#include "components/fury/fury_switches.h"
+ #include "base/feature_list.h"
  #include "base/notreached.h"
- #include "base/values.h"
- #include "chrome/browser/policy/developer_tools_policy_checker.h"
-@@ -83,8 +85,35 @@ bool IsRestrictedExtension(const extensions::Extension* extension,
+ #include "base/types/expected.h"
+@@ -89,8 +91,35 @@ bool IsRestrictedExtension(const extensions::Extension* extension,
  
  }  // namespace
  
@@ -56,10 +56,10 @@ index 16734088f9..048e908ec0 100644
 +  if (FuryDevToolsLocked()) {
 +    return false;
 +  }
-   if (content::WebContents* web_contents = agent_host->GetWebContents()) {
-     return IsInspectionAllowed(profile, web_contents);
-   }
-@@ -92,6 +121,9 @@ bool IsInspectionAllowed(Profile* profile,
+   if (base::FeatureList::IsEnabled(features::kDevToolsTargetLevelEvaluation)) {
+     GURL target_url = agent_host->GetURL();
+     if (!IsInspectionAllowed(profile, target_url)) {
+@@ -126,6 +155,9 @@ bool IsInspectionAllowed(Profile* profile,
  }
  
  bool IsInspectionAllowed(Profile* profile, content::WebContents* web_contents) {
@@ -69,7 +69,7 @@ index 16734088f9..048e908ec0 100644
    if (!web_contents) {
      // For contexts without web_contents, we can only check the general policy.
      return IsInspectionAllowed(
-@@ -177,6 +209,9 @@ bool IsInspectionAllowed(Profile* profile, content::WebContents* web_contents) {
+@@ -228,6 +260,9 @@ bool IsInspectionAllowed(Profile* profile, content::WebContents* web_contents) {
  
  bool IsInspectionAllowed(Profile* profile,
                           const extensions::Extension* extension) {
@@ -79,7 +79,7 @@ index 16734088f9..048e908ec0 100644
  #if BUILDFLAG(ENABLE_EXTENSIONS_CORE)
    policy::DeveloperToolsPolicyChecker* checker =
        policy::DeveloperToolsPolicyCheckerFactory::GetForBrowserContext(profile);
-@@ -235,6 +270,9 @@ bool IsInspectionAllowed(Profile* profile,
+@@ -286,6 +321,9 @@ bool IsInspectionAllowed(Profile* profile,
  
  #if !BUILDFLAG(IS_ANDROID)
  bool IsInspectionAllowed(Profile* profile, const web_app::WebApp* web_app) {
@@ -90,10 +90,10 @@ index 16734088f9..048e908ec0 100644
      policy::DeveloperToolsPolicyChecker* checker =
          policy::DeveloperToolsPolicyCheckerFactory::GetForBrowserContext(
 diff --git a/chrome/browser/policy/BUILD.gn b/chrome/browser/policy/BUILD.gn
-index 323fe316ef..ddeeb3370a 100644
+index 717b5c19ad..e9eba0849d 100644
 --- a/chrome/browser/policy/BUILD.gn
 +++ b/chrome/browser/policy/BUILD.gn
-@@ -1222,6 +1222,7 @@ source_set("impl") {
+@@ -1231,6 +1231,7 @@ source_set("impl") {
      ":path_parser",
      ":policy_util",
      "//chrome/browser:browser_features",
@@ -102,7 +102,7 @@ index 323fe316ef..ddeeb3370a 100644
      "//chrome/browser/bookmarks",
      "//chrome/browser/browsing_data",
 diff --git a/chrome/browser/policy/developer_tools_policy_checker.cc b/chrome/browser/policy/developer_tools_policy_checker.cc
-index 0cc29e8ea1..abad7c6e7a 100644
+index 84200574f3..c9a89ec075 100644
 --- a/chrome/browser/policy/developer_tools_policy_checker.cc
 +++ b/chrome/browser/policy/developer_tools_policy_checker.cc
 @@ -4,6 +4,9 @@
@@ -134,20 +134,19 @@ index 0cc29e8ea1..abad7c6e7a 100644
        url_blocklist_manager_.GetURLBlocklistState(url);
    if (url_state == URLBlocklist::URLBlocklistState::URL_IN_ALLOWLIST) {
 diff --git a/chrome/browser/policy/developer_tools_policy_handler.cc b/chrome/browser/policy/developer_tools_policy_handler.cc
-index 27873f46c1..8d9ad6783f 100644
+index 18b0bd47fa..e105f518d3 100644
 --- a/chrome/browser/policy/developer_tools_policy_handler.cc
 +++ b/chrome/browser/policy/developer_tools_policy_handler.cc
-@@ -4,6 +4,9 @@
+@@ -4,6 +4,8 @@
  
  #include "chrome/browser/policy/developer_tools_policy_handler.h"
  
-+#include "base/command_line.h"
 +#include "components/fury/fury_switches.h"
 +
  #include <optional>
  
  #include "base/command_line.h"
-@@ -292,6 +295,25 @@ void DeveloperToolsPolicyHandler::ApplyPolicySettings(const PolicyMap& policies,
+@@ -293,6 +295,25 @@ void DeveloperToolsPolicyHandler::ApplyPolicySettings(const PolicyMap& policies,
  
  policy::DeveloperToolsAvailability
  DeveloperToolsPolicyHandler::GetEffectiveAvailability(Profile* profile) {
@@ -172,7 +171,7 @@ index 27873f46c1..8d9ad6783f 100644
 +
  #if BUILDFLAG(IS_CHROMEOS)
    base::CommandLine* command_line = base::CommandLine::ForCurrentProcess();
-   if (command_line->HasSwitch(switches::kForceDevToolsAvailable)) {
+   if (command_line->HasSwitch(ash::switches::kForceDevToolsAvailable)) {
 diff --git a/components/fury/fury_switches.cc b/components/fury/fury_switches.cc
 index 689f3b74d8..c42d598a2c 100644
 --- a/components/fury/fury_switches.cc

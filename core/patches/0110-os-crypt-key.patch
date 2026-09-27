@@ -1,17 +1,17 @@
 diff --git a/chrome/browser/BUILD.gn b/chrome/browser/BUILD.gn
-index 5d917f14eb..ae1e0634c3 100644
+index 55fdbb556b..2cc39423fe 100644
 --- a/chrome/browser/BUILD.gn
 +++ b/chrome/browser/BUILD.gn
-@@ -2404,6 +2404,7 @@ source_set("browser") {
-     "//components/feed/core/shared_prefs:feed_shared_prefs",
-     "//components/find_in_page",
+@@ -2380,6 +2380,7 @@ source_set("browser") {
+     "//components/facilitated_payments/core/features",
+     "//components/feature_engagement",
      "//components/fury",
 +    "//components/fury/key_provider",
      "//components/fury/location",
-     "//components/gcm_driver",
      "//components/history/content/browser",
+     "//components/history_clusters/core",
 diff --git a/chrome/browser/browser_process_impl.cc b/chrome/browser/browser_process_impl.cc
-index 5e0f458c31..b589a4f429 100644
+index 548441ccaf..c9e7cb2347 100644
 --- a/chrome/browser/browser_process_impl.cc
 +++ b/chrome/browser/browser_process_impl.cc
 @@ -120,6 +120,8 @@
@@ -23,7 +23,7 @@ index 5e0f458c31..b589a4f429 100644
  #include "components/os_crypt/async/browser/os_crypt_async.h"
  #include "components/permissions/permissions_client.h"
  #include "components/policy/core/common/policy_service.h"
-@@ -1545,6 +1547,21 @@ void BrowserProcessImpl::PreMainMessageLoopRun() {
+@@ -1606,6 +1608,21 @@ void BrowserProcessImpl::PreMainMessageLoopRun() {
    std::vector<std::pair<size_t, std::unique_ptr<os_crypt_async::KeyProvider>>>
        providers;
  

@@ -1,20 +1,20 @@
 diff --git a/chrome/browser/BUILD.gn b/chrome/browser/BUILD.gn
-index eaa7929a31..65c67068d3 100644
+index b58905ddb3..5270b94ada 100644
 --- a/chrome/browser/BUILD.gn
 +++ b/chrome/browser/BUILD.gn
-@@ -2403,6 +2403,7 @@ source_set("browser") {
-     "//components/feed/core/common:feed_core_common",
-     "//components/feed/core/shared_prefs:feed_shared_prefs",
-     "//components/find_in_page",
+@@ -2379,6 +2379,7 @@ source_set("browser") {
+     "//components/embedder_support:user_agent",
+     "//components/facilitated_payments/core/features",
+     "//components/feature_engagement",
 +    "//components/fury",
-     "//components/gcm_driver",
      "//components/history/content/browser",
-     "//components/history/core/browser",
+     "//components/history_clusters/core",
+     "//components/keyed_service/content",
 diff --git a/chrome/browser/DEPS b/chrome/browser/DEPS
-index e0c73d6d4e..9f1f13ee5a 100644
+index 75ec838316..e945c5570c 100644
 --- a/chrome/browser/DEPS
 +++ b/chrome/browser/DEPS
-@@ -253,6 +253,7 @@ include_rules = [
+@@ -254,6 +254,7 @@ include_rules = [
    "+components/optimization_guide/optimization_guide_internals",
    "+components/origin_gating",
    "+components/origin_trials",
@@ -23,7 +23,7 @@ index e0c73d6d4e..9f1f13ee5a 100644
    "+components/ownership",
    "+components/page_image_service",
 diff --git a/chrome/browser/renderer_preferences_util.cc b/chrome/browser/renderer_preferences_util.cc
-index 3f0d1aff87..f04818e947 100644
+index 2b542a4814..5cacb00634 100644
 --- a/chrome/browser/renderer_preferences_util.cc
 +++ b/chrome/browser/renderer_preferences_util.cc
 @@ -16,6 +16,7 @@
@@ -34,7 +34,7 @@ index 3f0d1aff87..f04818e947 100644
  #include "content/public/browser/reduce_accept_language_utils.h"
  #if BUILDFLAG(IS_CHROMEOS)
  #include "chrome/browser/ash/login/demo_mode/demo_session.h"
-@@ -193,6 +194,73 @@ void UpdateFromSystemSettings(blink::RendererPreferences* prefs,
+@@ -204,6 +205,73 @@ void UpdateFromSystemSettings(blink::RendererPreferences* prefs,
                   &prefs->webrtc_udp_min_port, &prefs->webrtc_udp_max_port);
    prefs->webrtc_local_ips_allowed_urls = GetLocalIpsAllowedUrls(
        pref_service->GetList(prefs::kWebRtcLocalIpsAllowedUrls));

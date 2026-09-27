@@ -10,8 +10,8 @@ fn main() {
         languages: vec!["en-US".into(), "en".into()],
         ui_locale: "en-US".into(),
         geolocation: Some((52.52, 13.405)),
-        chrome_major: 153,
-        chrome_full_version: "153.0.8010.37".into(),
+        chrome_major: 155,
+        chrome_full_version: "155.0.8059.12".into(),
     };
     let seed: u64 = std::env::args().nth(2).unwrap().parse().unwrap();
     println!("{}", serde_json::to_string_pretty(&p.derive_core_config(seed, &ctx)).unwrap());

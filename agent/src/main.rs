@@ -571,8 +571,8 @@ fn core_leaves() -> &'static [&'static str] {
 
 /// The core this agent expects to drive. Read from core/CHROMIUM_VERSION at
 /// build time would be better; hard-coded until the two are built together.
-pub const CHROME_MAJOR: u32 = 153;
-pub const CHROME_FULL_VERSION: &str = "153.0.8010.37";
+pub const CHROME_MAJOR: u32 = 155;
+pub const CHROME_FULL_VERSION: &str = "155.0.8059.12";
 
 fn cmd_check_fingerprint(args: &[String]) -> anyhow::Result<()> {
     let path = args
