@@ -33,6 +33,7 @@ mod sync;
 mod sync_tests;
 #[cfg(test)]
 mod tmp;
+mod unsynced;
 mod transfer;
 mod usage;
 mod vault;

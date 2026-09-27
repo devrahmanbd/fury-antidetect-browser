@@ -2375,9 +2375,32 @@ impl Agent {
         if let Some(srv) = server.as_ref() {
             match srv.fetch_bundle(&profile.id).await? {
                 Some((bytes, wrapped, version)) => {
-                    crate::bundle::unpack(&bytes, &wrapped, &sealer, &dir)?;
+                    // Not over a session this machine never managed to upload.
+                    // See unsynced.rs.
+                    use crate::unsynced::Pull;
+                    match crate::unsynced::decide(crate::unsynced::base(&profile.id), version) {
+                        Pull::KeepLocal => tracing::warn!(
+                            profile = %profile.name,
+                            version,
+                            "keeping this machine's copy: its last session never reached the \
+                             server and nobody has uploaded since; it goes up when this one closes"
+                        ),
+                        pull => {
+                            if pull == Pull::SetAsideThenUnpack {
+                                let aside = crate::unsynced::set_aside(&profile.id)?;
+                                tracing::warn!(
+                                    profile = %profile.name,
+                                    version,
+                                    kept = %aside.display(),
+                                    "this machine's last session never reached the server, and \
+                                     someone uploaded since; theirs is used, ours is kept aside"
+                                );
+                            }
+                            crate::bundle::unpack(&bytes, &wrapped, &sealer, &dir)?;
+                            tracing::info!(profile = %profile.name, version, "pulled bundle");
+                        }
+                    }
                     pulled_version = version;
-                    tracing::info!(profile = %profile.name, version, "pulled bundle");
                 }
                 // A profile shared before it was ever opened has a row and no
                 // bytes. Starting empty is correct; refusing would make the
@@ -2592,6 +2615,14 @@ impl Agent {
             // is what the lock authorises, so releasing first would be racing
             // ourselves for it.
             //
+            // The unsent-session marker follows the outcome: set when this
+            // machine is left holding work the server lacks, gone once they
+            // agree. See unsynced.rs.
+            match &pushed_result {
+                Ok(_) => crate::unsynced::clear(profile_id),
+                Err(_) => crate::unsynced::mark(profile_id, base),
+            }
+
             // Also after a push that FAILED. It used to return first, and the
             // lock then sat on the server until it lapsed, ninety seconds after
             // the heartbeat stopped: every colleague saw the profile "in use"
