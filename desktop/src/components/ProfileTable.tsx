@@ -46,6 +46,7 @@ export function ProfileTable({
   thisMachine,
   local,
   busy,
+  launching,
   onLaunch,
   onStop,
   onEdit,
@@ -65,6 +66,8 @@ export function ProfileTable({
   thisMachine: string;
   local: boolean;
   busy: boolean;
+  /** Profiles whose launch is in flight: only their own buttons wait. */
+  launching?: Set<string>;
   onLaunch: (p: Profile, force?: boolean) => void;
   onStop: (p: Profile) => void;
   /** Local mode only: with a server, editing belongs where the permissions
@@ -191,6 +194,7 @@ export function ProfileTable({
           const canEdit = p.permissions.includes("edit_profile");
           const locked = p.lock !== null;
           const open = isOpenHere(p, { local, userId: me?.user_id, machine: thisMachine });
+          const starting = launching?.has(p.id) ?? false;
           // What the row says about itself (docs/12 B). A red verdict disables
           // Open with the reason: the contradiction is the ban, not the
           // fingerprint, and a warning that scrolls past is not a guard.
@@ -344,11 +348,11 @@ export function ProfileTable({
                 <div>
                 {!open && !locked && canLaunch && (
                   <button
-                    disabled={busy || verdict.level === "block"}
+                    disabled={busy || starting || verdict.level === "block"}
                     title={verdict.level === "block" ? `${t("row.fixFirst")}: ${verdictText}` : undefined}
                     onClick={() => onLaunch(p)}
                   >
-                    {t("row.open")}
+                    {starting ? t("row.opening") : t("row.open")}
                   </button>
                 )}
                 {open && (
@@ -357,7 +361,7 @@ export function ProfileTable({
                   </button>
                 )}
                 {!open && locked && canForce && (
-                  <button className="danger" disabled={busy} onClick={() => onLaunch(p, true)}>
+                  <button className="danger" disabled={busy || starting} onClick={() => onLaunch(p, true)}>
                     {t("row.takeOver")}
                   </button>
                 )}

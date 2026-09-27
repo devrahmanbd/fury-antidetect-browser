@@ -248,6 +248,7 @@ const en = {
   "col.status": "Status",
   "col.lastOpened": "Last opened",
   "row.open": "Open",
+  "row.opening": "Opening…",
   /// The status, which is a different word from the button even in English:
   /// "Open" in a column headed Status reads as something to press. It says
   /// "here" because that is the distinction the column is drawing — this
@@ -1153,6 +1154,7 @@ const ru: Record<Key, string> = {
   "col.status": "Статус",
   "col.lastOpened": "Последний запуск",
   "row.open": "Открыть",
+  "row.opening": "Открываю…",
   "row.openHere": "Используется здесь",
   "row.close": "Закрыть",
   "row.edit": "Изменить",

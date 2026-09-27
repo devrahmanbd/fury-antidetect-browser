@@ -58,6 +58,11 @@ export function App() {
   const [sharing, setSharing] = useState<Profile[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // Profiles whose launch is in flight. Per profile, not the global `busy`:
+  // a team launch can take minutes (it pulls the profile from the server
+  // first), and holding every button in the list for that long read as the
+  // application having frozen -- "the Open button does not press", 27.09.2026.
+  const [launching, setLaunching] = useState<Set<string>>(new Set());
   const [editing, setEditing] = useState<Profile | null | undefined>(undefined);
   const [query, setQuery] = useState("");
   const [tag, setTag] = useState("");
@@ -364,7 +369,8 @@ export function App() {
   };
 
   const onLaunch = async (profile: Profile, force = false) => {
-    setBusy(true);
+    if (launching.has(profile.id)) return;
+    setLaunching((prev) => new Set(prev).add(profile.id));
     setError(null);
     try {
       const res = await api.launch(profile.id, force, profile.origin);
@@ -392,7 +398,11 @@ export function App() {
     } catch (e) {
       setError(say(e));
     } finally {
-      setBusy(false);
+      setLaunching((prev) => {
+        const next = new Set(prev);
+        next.delete(profile.id);
+        return next;
+      });
     }
   };
 
@@ -1273,6 +1283,7 @@ export function App() {
                 thisMachine={shell.machine_name}
                 local={false}
                 busy={busy}
+                launching={launching}
                 onLaunch={onLaunch}
                 onStop={onStop}
               />
@@ -1292,6 +1303,7 @@ export function App() {
               thisMachine={shell.machine_name}
               local={local}
               busy={busy}
+              launching={launching}
               onLaunch={onLaunch}
               onStop={onStop}
               onEdit={setEditing}
