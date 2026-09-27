@@ -2235,12 +2235,14 @@ impl Agent {
             // to avoid, and it does not stop being one because the address is
             // the operator's own. The request goes out directly — which is
             // where every request from this profile is about to go anyway.
-            match Self::resolve_exit(
+            let exit_started = std::time::Instant::now();
+            let resolved = Self::resolve_exit(
                 proxy.map(|p| p.url()).as_deref(),
                 proxy.and_then(|p| p.checker_url.as_deref()),
             )
-            .await
-            {
+            .await;
+            let exit_ms = exit_started.elapsed().as_millis() as u64;
+            match resolved {
                 Ok(facts) => {
                     // Remembered against the proxy row, when there is one.
                     // Nothing to remember it against otherwise, and this
@@ -2266,7 +2268,7 @@ impl Agent {
                     exit_location = facts.location.or(exit_location);
                 }
                 Err(e) => {
-                    tracing::warn!(error = %e, "could not resolve the proxy exit");
+                    tracing::warn!(error = format!("{e:#}"), exit_ms, "could not resolve the proxy exit");
                 }
             }
         }
@@ -2393,8 +2395,16 @@ impl Agent {
 
         let mut pulled_version = 0;
         if let Some(srv) = server.as_ref() {
-            match srv.fetch_bundle(&profile.id).await? {
+            // Timed, both halves. A tester's launch took two minutes between the
+            // exit check and "pulled bundle" while his server said it answered
+            // in 0.1 s, and the log could not say whether the time went on the
+            // wire or on writing the profile to disk. Now it says.
+            let fetch_started = std::time::Instant::now();
+            let fetched = srv.fetch_bundle(&profile.id).await?;
+            let fetch_ms = fetch_started.elapsed().as_millis() as u64;
+            match fetched {
                 Some((bytes, wrapped, version)) => {
+                    let size = bytes.len();
                     // Not over a session this machine never managed to upload.
                     // See unsynced.rs.
                     use crate::unsynced::Pull;
@@ -2416,8 +2426,17 @@ impl Agent {
                                      someone uploaded since; theirs is used, ours is kept aside"
                                 );
                             }
-                            crate::bundle::unpack(&bytes, &wrapped, &sealer, &dir)?;
-                            tracing::info!(profile = %profile.name, version, "pulled bundle");
+                            let unpack_started = std::time::Instant::now();
+                            let files = crate::bundle::unpack(&bytes, &wrapped, &sealer, &dir)?;
+                            tracing::info!(
+                                profile = %profile.name,
+                                version,
+                                bytes = size,
+                                files,
+                                fetch_ms,
+                                unpack_ms = unpack_started.elapsed().as_millis() as u64,
+                                "pulled bundle"
+                            );
                         }
                     }
                     pulled_version = version;
@@ -2425,7 +2444,7 @@ impl Agent {
                 // A profile shared before it was ever opened has a row and no
                 // bytes. Starting empty is correct; refusing would make the
                 // first launch of every shared profile fail.
-                None => tracing::info!(profile = %profile.name, "no bundle on the server yet"),
+                None => tracing::info!(profile = %profile.name, fetch_ms, "no bundle on the server yet"),
             }
         }
 
