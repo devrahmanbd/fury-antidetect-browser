@@ -2553,6 +2553,11 @@ impl Agent {
             beat.abort();
         }
 
+        // The relay goes with the browser whatever happens next -- including a
+        // failed upload, which used to return before this line and leave a port
+        // forwarding to the customer's proxy with nothing behind it.
+        entry.relay.abort();
+
         let mut pushed = serde_json::Value::Null;
         if let Some((srv, base)) = entry.server.take() {
             // A server launch always carries a lock; the pair is set together at
@@ -2568,33 +2573,37 @@ impl Agent {
                 },
                 None => crate::bundle::Sealer::Machine(self.store.vault()),
             };
-            let sealed = crate::bundle::pack(&paths::profile_dir(profile_id), &sealer)?;
-            let version = srv
-                .push_bundle(
-                    profile_id,
-                    &sealed.bytes,
-                    &sealed.wrapped_key,
-                    &sealed.sha256,
-                    base,
-                    &token,
-                )
-                .await?;
-            pushed = serde_json::json!(version);
+            let pushed_result = match crate::bundle::pack(&paths::profile_dir(profile_id), &sealer) {
+                Ok(sealed) => {
+                    srv.push_bundle(
+                        profile_id,
+                        &sealed.bytes,
+                        &sealed.wrapped_key,
+                        &sealed.sha256,
+                        base,
+                        &token,
+                    )
+                    .await
+                }
+                Err(e) => Err(e),
+            };
 
             // And hand the lock back, after the bundle and not before: the push
             // is what the lock authorises, so releasing first would be racing
             // ourselves for it.
             //
-            // Not fatal if it fails — the lock lapses ninety seconds after the
-            // heartbeat stopped, which is a moment ago — but the wait is the
-            // whole problem it fixes, so it is logged rather than swallowed.
+            // Also after a push that FAILED. It used to return first, and the
+            // lock then sat on the server until it lapsed, ninety seconds after
+            // the heartbeat stopped: every colleague saw the profile "in use"
+            // for a browser closed a minute and a half ago, which is how a
+            // tester described it on 27.09.2026. Holding it protects nothing --
+            // it lapses anyway -- and the work stays on this machine either
+            // way; the error below says so.
             if let Err(e) = srv.release_lock(profile_id, &token).await {
                 tracing::warn!(profile = %profile_id, error = %e, "could not release the lock");
             }
+            pushed = serde_json::json!(pushed_result?);
         }
-        // The exit closes with the profile. Leaving it up would keep a port
-        // forwarding to the customer's proxy with no browser behind it.
-        entry.relay.abort();
         Ok(serde_json::json!({ "stopped": true, "uploaded_version": pushed }))
     }
 }
