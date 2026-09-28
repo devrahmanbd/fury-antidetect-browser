@@ -1007,6 +1007,8 @@ export const api = {
     cmd("capture_persona"),
   /** Writes it to ~/Downloads/fury-persona-<id>.json; returns the path. */
   savePersonaFile: (persona: unknown): Promise<string> => cmd<string>("save_persona_file", { persona }),
+  /** Keep a capture on this machine as a persona; returns its id. */
+  usePersonaHere: (persona: unknown): Promise<string> => cmd<string>("use_persona_here", { persona }),
 
   // ---- domain lists ------------------------------------------------------
 

@@ -3066,13 +3066,37 @@ pub async fn capture_persona() -> R<serde_json::Value> {
 /// folder, named after the persona's id. The interface has no native save
 /// dialog, and a path field for a file most people will attach to a pull
 /// request is worse than a known place.
-#[tauri::command]
-pub async fn save_persona_file(persona: serde_json::Value) -> R<String> {
-    let id = persona
+fn persona_id(persona: &serde_json::Value) -> R<&str> {
+    persona
         .get("id")
         .and_then(|v| v.as_str())
         .filter(|s| !s.is_empty() && s.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'-' || c == b'_'))
-        .ok_or_else(|| ApiErr::local("the persona has no usable id"))?;
+        .ok_or_else(|| ApiErr::local("the persona has no usable id"))
+}
+
+/// Keeps a captured persona on this machine, where the agent picks it up beside
+/// the built-in catalogue (agent/src/personas.rs). Nothing is sent anywhere.
+///
+/// The other half of "add this machine": publishing to the catalogue makes a
+/// machine everybody's, and a tester who captured his own asked how to just use
+/// it. Refused if it does not parse as a persona, because the agent would skip
+/// such a file with only a log line to say so.
+#[tauri::command]
+pub async fn use_persona_here(persona: serde_json::Value) -> R<String> {
+    let id = persona_id(&persona)?.to_string();
+    serde_json::from_value::<fury_shared::persona::Persona>(persona.clone())
+        .map_err(|e| ApiErr::local(format!("this is not a persona the agent can read: {e}")))?;
+    let dir = fury_platform::dirs::data_dir().join("personas");
+    std::fs::create_dir_all(&dir).map_err(|e| ApiErr::local(format!("Could not create {}: {e}", dir.display())))?;
+    let path = dir.join(format!("{id}.json"));
+    let text = serde_json::to_string_pretty(&persona).map_err(|e| ApiErr::local(e.to_string()))?;
+    std::fs::write(&path, text).map_err(|e| ApiErr::local(format!("Could not write {}: {e}", path.display())))?;
+    Ok(id)
+}
+
+#[tauri::command]
+pub async fn save_persona_file(persona: serde_json::Value) -> R<String> {
+    let id = persona_id(&persona)?;
     let home = std::env::var_os("HOME")
         .or_else(|| std::env::var_os("USERPROFILE"))
         .ok_or_else(|| ApiErr::local("no home directory"))?;

@@ -54,25 +54,34 @@ pub fn all() -> Vec<Persona> {
     // any entry describes a machine that cannot exist.
     let mut out: Vec<Persona> = fury_shared::catalogue::all();
 
+    // Two places add to it, never replace it: the folder a capture is kept in
+    // when "Use on this computer" is pressed, and FURY_PERSONAS for anyone
+    // building their own. The folder came first in a tester's question -- "I
+    // took a capture of my machine, how do I use it?" -- and the honest answer
+    // then was an environment variable and a reboot.
+    load_dir(&crate::paths::personas_dir(), &mut out);
     if let Ok(dir) = std::env::var("FURY_PERSONAS") {
-        if let Ok(entries) = std::fs::read_dir(&dir) {
-            for entry in entries.flatten() {
-                let path = entry.path();
-                if path.extension().is_some_and(|e| e == "json") {
-                    match std::fs::read_to_string(&path)
-                        .ok()
-                        .and_then(|raw| serde_json::from_str::<Persona>(&raw).ok())
-                    {
-                        Some(p) if !out.iter().any(|b| b.id == p.id) => out.push(p),
-                        Some(_) => tracing::warn!(?path, "persona id already built in — ignored"),
-                        None => tracing::warn!(?path, "persona does not parse — ignored"),
-                    }
-                }
-            }
-        }
+        load_dir(std::path::Path::new(&dir), &mut out);
     }
 
     out
+}
+
+fn load_dir(dir: &std::path::Path, out: &mut Vec<Persona>) {
+    let Ok(entries) = std::fs::read_dir(dir) else { return };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().is_some_and(|e| e == "json") {
+            match std::fs::read_to_string(&path)
+                .ok()
+                .and_then(|raw| serde_json::from_str::<Persona>(&raw).ok())
+            {
+                Some(p) if !out.iter().any(|b| b.id == p.id) => out.push(p),
+                Some(_) => tracing::warn!(?path, "persona id already present — ignored"),
+                None => tracing::warn!(?path, "persona does not parse — ignored"),
+            }
+        }
+    }
 }
 
 pub fn load(id: &str) -> anyhow::Result<Persona> {

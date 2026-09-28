@@ -16,6 +16,12 @@ use std::path::PathBuf;
 /// someone runs the agent headless on a box with no desktop.
 pub use fury_platform::dirs::data_dir;
 
+/// Personas added on this machine, beside the built-in catalogue: a capture of
+/// this computer, kept here instead of published. See personas.rs.
+pub fn personas_dir() -> PathBuf {
+    data_dir().join("personas")
+}
+
 pub fn db_path() -> PathBuf {
     data_dir().join("fury.db")
 }

@@ -179,6 +179,7 @@ fn main() {
             commands::warm_clear,
             commands::warm_defaults,
             commands::save_persona_file,
+            commands::use_persona_here,
             commands::blocklists,
             commands::read_blocklist,
             commands::save_blocklist,

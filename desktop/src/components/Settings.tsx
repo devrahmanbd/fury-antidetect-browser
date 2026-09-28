@@ -653,6 +653,7 @@ function CaptureMachine() {
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<{ persona: Record<string, unknown> & { id: string }; problems: string[]; browser: string } | null>(null);
   const [saved, setSaved] = useState<string | null>(null);
+  const [usedHere, setUsedHere] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   return (
@@ -718,7 +719,21 @@ function CaptureMachine() {
             >
               {t("cap.save")}
             </button>
+            <button
+              disabled={busy || result.problems.length > 0}
+              title={result.problems.length > 0 ? t("cap.useHereRefused") : undefined}
+              onClick={async () => {
+                try {
+                  setUsedHere(await api.usePersonaHere(result.persona));
+                } catch (e) {
+                  setError(say(e));
+                }
+              }}
+            >
+              {t("cap.useHere")}
+            </button>
           </div>
+          {usedHere && <p className="hint">{t("cap.usedHere", { id: usedHere })}</p>}
           {saved && (
             <p className="hint">
               {t("cap.saved", { path: saved })} {t("cap.next")}{" "}
