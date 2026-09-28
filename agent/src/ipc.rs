@@ -1533,7 +1533,8 @@ impl Agent {
                     .unwrap_or_default();
                 problems.extend(override_problems);
 
-                let cfg = persona.derive_core_config(seed.max(1) as u64, &ctx);
+                let mut cfg = persona.derive_core_config(seed.max(1) as u64, &ctx);
+                overrides.apply_config(&mut cfg);
                 let get = |path: &str| -> serde_json::Value {
                     path.split('.')
                         .try_fold(&cfg, |n, part| n.get(part))
@@ -2332,7 +2333,8 @@ impl Agent {
         // and the config cannot disagree about it.
         profile.overrides.apply_context(&mut ctx);
         let ui_locale = ctx.ui_locale.clone();
-        let config = persona.derive_core_config(profile.fp_seed as u64, &ctx);
+        let mut config = persona.derive_core_config(profile.fp_seed as u64, &ctx);
+        profile.overrides.apply_config(&mut config);
 
         // Local mode has no roles to enforce: whoever can reach this socket
         // owns the machine and the data. Restrictions are a team-server concept

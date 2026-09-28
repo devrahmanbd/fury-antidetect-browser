@@ -597,9 +597,15 @@ pub fn check_core_config(config: &serde_json::Value) -> Result<(), Vec<String>> 
         .flat_map(|(_, keys)| keys.iter().copied())
         .collect();
 
+    // Real canvas is chosen per profile, and it is chosen by leaving the seed
+    // out -- that is how the core is told not to noise. The marker is what
+    // tells this check that the absence was meant (overrides::CanvasMode).
+    let real_canvas = lookup(config, "noise.canvas").and_then(|v| v.as_str()) == Some("real");
+
     let missing: Vec<String> = CORE_CONFIG_KEYS
         .iter()
         .filter(|path| !skipped.contains(path))
+        .filter(|path| !(real_canvas && **path == "noise.canvasSeed"))
         .filter(|path| match path.strip_suffix('.') {
             // A prefix the core completes at runtime: what must be there is an
             // object with something in it. An empty one reads exactly like a

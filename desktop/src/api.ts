@@ -289,6 +289,8 @@ export interface MachineOverrides {
   /** Id of a persona of the same OS whose GPU this one takes. */
   gpu?: string;
   geolocation?: { latitude: number; longitude: number };
+  /** Canvas and WebGL readback: noised (absent, the default) or this machine's own. */
+  canvas?: "noise" | "real";
 }
 
 /** What the pickers may offer for one machine, filtered by its OS. */

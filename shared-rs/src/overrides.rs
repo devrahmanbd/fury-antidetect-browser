@@ -52,7 +52,35 @@ pub struct MachineOverrides {
     /// A fixed position instead of the exit's.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub geolocation: Option<GeoOverride>,
+    /// Canvas and WebGL readback: noised (the default) or this machine's own.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub canvas: Option<CanvasMode>,
 }
+
+/// What a page gets when it reads a canvas back.
+///
+/// Noise is the default and stays it. It is what keeps two profiles on one
+/// machine from sharing a canvas hash -- the most direct way to link accounts
+/// that run side by side -- and changing it on a profile that is already
+/// trusted changes that profile's fingerprint.
+///
+/// Real is the machine's own rendering, byte for byte. A tester who has run
+/// Sphere and Vision asked for it, and measurement backs him: pixelscan reports
+/// "Masking detected" for our noise and nothing for a real Chrome (27.09.2026),
+/// and no real machine has a canvas that no other machine shares. It fits one
+/// account per machine, or a persona captured from this same machine, where
+/// the WebGL the profile claims is the GPU that actually draws. Both 2D canvas
+/// (0030) and WebGL readPixels (0031) follow it: they read the same seed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum CanvasMode {
+    Noise,
+    Real,
+}
+
+/// Marks a config whose canvas is real on purpose, so the launch check can tell
+/// it from one that forgot the seed. The core never reads it.
+pub const REAL_CANVAS_MARKER: &str = "canvas";
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct ScreenOverride {
@@ -152,6 +180,19 @@ pub fn options_for(persona: &Persona, catalogue: &[Persona]) -> OverrideOptions 
 impl MachineOverrides {
     pub fn is_empty(&self) -> bool {
         *self == Self::default()
+    }
+
+    /// The pins that live in the core config itself rather than in the
+    /// persona or the context. Today only the canvas mode: real means no canvas
+    /// seed, which is how patches 0030 and 0031 are told to leave readback
+    /// alone, plus a marker saying it was meant.
+    pub fn apply_config(&self, config: &mut serde_json::Value) {
+        if self.canvas == Some(CanvasMode::Real) {
+            if let Some(noise) = config.get_mut("noise").and_then(|n| n.as_object_mut()) {
+                noise.remove("canvasSeed");
+                noise.insert(REAL_CANVAS_MARKER.into(), serde_json::json!("real"));
+            }
+        }
     }
 
     /// The two pins that live in the context rather than the persona: the UI
@@ -350,6 +391,27 @@ mod tests {
         ] {
             assert!(ov.apply(&win, &all).is_err(), "{ov:?}");
         }
+    }
+
+    #[test]
+    fn real_canvas_drops_the_seed_and_says_so_and_noise_changes_nothing() {
+        let config = || serde_json::json!({ "noise": { "canvasSeed": 7, "audioSeed": 9 } });
+
+        let mut real = config();
+        MachineOverrides { canvas: Some(CanvasMode::Real), ..Default::default() }.apply_config(&mut real);
+        assert!(real["noise"].get("canvasSeed").is_none());
+        assert_eq!(real["noise"]["canvas"], "real");
+        assert_eq!(real["noise"]["audioSeed"], 9, "audio noise is not canvas");
+
+        for ov in [MachineOverrides::default(), MachineOverrides { canvas: Some(CanvasMode::Noise), ..Default::default() }] {
+            let mut same = config();
+            ov.apply_config(&mut same);
+            assert_eq!(same, config());
+        }
+        assert_eq!(
+            serde_json::to_string(&MachineOverrides { canvas: Some(CanvasMode::Real), ..Default::default() }).unwrap(),
+            r#"{"canvas":"real"}"#
+        );
     }
 
     #[test]

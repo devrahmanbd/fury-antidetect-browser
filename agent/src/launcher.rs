@@ -527,4 +527,18 @@ mod tests {
         let err = spawn(&spec_for(r, &cfg)).unwrap_err();
         assert!(matches!(err, LaunchError::Inconsistent(_)), "got {err:?}");
     }
+
+    #[test]
+    fn a_real_canvas_is_a_decision_and_passes_while_a_lost_seed_still_does_not() {
+        use fury_shared::overrides::{CanvasMode, MachineOverrides};
+        let mut cfg = sample_config();
+        MachineOverrides { canvas: Some(CanvasMode::Real), ..Default::default() }.apply_config(&mut cfg);
+        assert!(cfg["noise"].get("canvasSeed").is_none());
+        fury_shared::fingerprint::check_core_config(&cfg).expect("real canvas is allowed");
+
+        // The marker is what makes it allowed; the same config without it is
+        // the forgotten seed the check exists for.
+        cfg["noise"].as_object_mut().unwrap().remove("canvas");
+        assert!(fury_shared::fingerprint::check_core_config(&cfg).is_err());
+    }
 }

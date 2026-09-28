@@ -474,7 +474,12 @@ const en = {
     "A team profile keeps the machine it was created with: the server never changes it, so the choice here would not be saved. To change individual fields, use Machine settings.",
   "pd.noise": "Noise",
   "pd.noiseHint":
-    "Canvas, audio and element geometry are perturbed with a seed of this profile's own. There is no switch to turn it off: an un-noised canvas is byte-identical to the host machine, which is what makes several commercial browsers trivially linkable.",
+    "Audio and element geometry are always perturbed with a seed of this profile's own. Canvas is too, unless you choose otherwise below.",
+  "pd.canvasMode": "Canvas",
+  "pd.canvasNoise": "Noise (default)",
+  "pd.canvasReal": "Real, this computer's own",
+  "pd.canvasHint":
+    "Noise gives each profile its own canvas and WebGL image, so profiles on one computer cannot be linked by them — but checkers such as pixelscan can see that it is noised. Real is exactly what this computer draws: no checker sees masking, but every profile set to Real on this computer shows the same canvas. It suits one account per computer, or a profile built from a capture of this computer. Do not switch a profile whose accounts are already trusted: their fingerprint changes.",
   "pd.overview": "What it will claim",
   "pd.pickMachine": "Choose a machine to see what it reports.",
   "pd.consistent": "Consistent — nothing here contradicts anything else.",
@@ -1366,7 +1371,12 @@ const ru: Record<Key, string> = {
     "Командный профиль остаётся на той машине, с которой его создали: сервер её не меняет, поэтому выбор здесь не сохранится. Отдельные поля меняются на вкладке «Настройки машины».",
   "pd.noise": "Шум",
   "pd.noiseHint":
-    "Canvas, звук и геометрия элементов зашумляются сидом самого профиля. Выключателя нет: незашумлённый canvas байт-в-байт совпадает с хостом, и именно поэтому профили нескольких коммерческих браузеров связываются между собой в одну строку.",
+    "Звук и геометрия элементов всегда зашумляются сидом самого профиля. Canvas тоже, если ниже не выбрано иное.",
+  "pd.canvasMode": "Canvas",
+  "pd.canvasNoise": "Шум (по умолчанию)",
+  "pd.canvasReal": "Реальный, как у этого компьютера",
+  "pd.canvasHint":
+    "Шум даёт каждому профилю свою картинку canvas и WebGL, и профили на одном компьютере по ним не связать — но чекеры вроде pixelscan видят, что она зашумлена. Реальный — ровно то, что рисует этот компьютер: маскировки не видит ни один чекер, но у всех профилей с «Реальным» на этом компьютере canvas одинаковый. Подходит, если на компьютере один аккаунт, или профиль собран из слепка этого же компьютера. Не переключайте профиль, аккаунтам которого уже доверяют: у них сменится отпечаток.",
   "pd.overview": "Чем представится",
   "pd.pickMachine": "Выберите машину, чтобы увидеть, что она сообщает.",
   "pd.consistent": "Согласовано — ничто здесь не противоречит остальному.",

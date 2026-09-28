@@ -962,6 +962,25 @@ export function ProfileDialog({
                     </div>
                   </div>
                 </div>
+                <div className="field">
+                  <label htmlFor="pd-canvas">{t("pd.canvasMode")}</label>
+                  <div>
+                    <select
+                      id="pd-canvas"
+                      value={overrides.canvas ?? "noise"}
+                      disabled={machineLocked}
+                      onChange={(e) =>
+                        setOv({ canvas: e.target.value === "real" ? "real" : undefined })
+                      }
+                    >
+                      <option value="noise">{t("pd.canvasNoise")}</option>
+                      <option value="real">{t("pd.canvasReal")}</option>
+                    </select>
+                    <div className="muted small">
+                      {machineLocked ? t("pd.machineLockedTeam") : t("pd.canvasHint")}
+                    </div>
+                  </div>
+                </div>
               </>
             )}
           </div>
