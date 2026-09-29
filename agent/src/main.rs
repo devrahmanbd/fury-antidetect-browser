@@ -124,7 +124,8 @@ async fn main() -> anyhow::Result<()> {
                        --profile-dir DIR   user-data-dir (default a temp dir)\n        \
                        --core PATH         core binary (or set FURY_CORE)\n        \
                        --url URL           page to open\n        \
-                       --debug-port N      expose CDP on 127.0.0.1:N\n  \
+                       --debug-port N      expose CDP on 127.0.0.1:N\n        \
+                       --real-canvas       the machine's own canvas instead of noise\n  \
                    fury-agent check-fingerprint <config.json>\n      \
                      Validate a fingerprint config for internal consistency.\n      \
                      Pass '-' to check the built-in sample.\n  \
@@ -260,7 +261,16 @@ async fn cmd_launch(args: &[String]) -> anyhow::Result<()> {
             errs.iter().map(|e| e.to_string()).collect::<Vec<_>>().join("\n  ")
         );
     }
-    let config = persona.derive_core_config(seed, &ctx);
+    let mut config = persona.derive_core_config(seed, &ctx);
+    // The canvas mode a profile picks in its Advanced tab, for measuring the
+    // two side by side from a terminal.
+    if args.iter().any(|a| a == "--real-canvas") {
+        fury_shared::overrides::MachineOverrides {
+            canvas: Some(fury_shared::overrides::CanvasMode::Real),
+            ..Default::default()
+        }
+        .apply_config(&mut config);
+    }
 
     // The installed core is the last resort and it was missing entirely: this
     // took --core or FURY_CORE and nothing else, so on a machine where

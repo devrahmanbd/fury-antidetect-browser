@@ -262,11 +262,21 @@ echo "==> autoninja chrome"
 # `> file` and not `>> file`: one build, one log. Appending would leave the last
 # line of the previous build looking like progress in this one.
 PROGRESS="$SRC/$OUT/build-progress.log"
+# Neither the status nor set -e is trusted with this one. On the Windows box a
+# build that printed "FAILED:" and "ninja: build stopped" left this script with
+# status 0 and without reaching the next line, three times on 29.09.2026, and
+# the job went on as if the binaries were new. So the pipeline runs with -e
+# off, and success needs BOTH a zero status and ninja's own output without a
+# failure in it -- unanchored, because ninja redraws its progress line with a
+# carriage return there and "FAILED:" lands mid-line.
+set +e
 (cd "$SRC" && autoninja -C "$OUT" $JOBS_ARG chrome 2>&1 | tee "$PROGRESS")
-# tee's exit status is not ninja's. Without this a failed build reports success
-# to every caller, which is the same class of quiet lie as the rest of this file.
-status=${PIPESTATUS[0]}
-[ "$status" -eq 0 ] || exit "$status"
+status=$?
+set -e
+if [ "$status" -ne 0 ] || grep -qE 'FAILED: |ninja: build stopped' "$PROGRESS"; then
+  echo "!! the build failed (autoninja status $status) -- see the output above" >&2
+  exit 1
+fi
 
 echo "==> Built: $SRC/$OUT"
 
