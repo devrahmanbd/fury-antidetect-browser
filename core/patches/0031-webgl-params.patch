@@ -1,20 +1,21 @@
 diff --git a/third_party/blink/renderer/modules/webgl/webgl_rendering_context_base.cc b/third_party/blink/renderer/modules/webgl/webgl_rendering_context_base.cc
-index 403e1b307f..eb8dcdf810 100644
+index b452298c24..1ea40ddcea 100644
 --- a/third_party/blink/renderer/modules/webgl/webgl_rendering_context_base.cc
 +++ b/third_party/blink/renderer/modules/webgl/webgl_rendering_context_base.cc
-@@ -25,6 +25,11 @@
+@@ -25,6 +25,12 @@
  
  #include "third_party/blink/renderer/modules/webgl/webgl_rendering_context_base.h"
  
 +#include "base/strings/string_number_conversions.h"
 +#include "base/strings/string_split.h"
 +#include "components/fury/fury_config.h"
++#include "third_party/blink/renderer/platform/graphics/fury_flat.h"
 +#include "components/fury/fury_noise.h"
 +
  #include <inttypes.h>
  
  #include <memory>
-@@ -3987,10 +3992,136 @@ void WebGLRenderingContextBase::RecordANGLEImplementation() {
+@@ -4003,10 +4009,136 @@ void WebGLRenderingContextBase::RecordANGLEImplementation() {
                              webgl_angle_implementation);
  }
  
@@ -151,7 +152,7 @@ index 403e1b307f..eb8dcdf810 100644
    const int kIntZero = 0;
    switch (pname) {
      case GL_ACTIVE_TEXTURE:
-@@ -4533,6 +4664,20 @@ WebGLRenderingContextBase::getSupportedExtensions() {
+@@ -4549,6 +4681,20 @@ WebGLRenderingContextBase::getSupportedExtensions() {
      }
    }
  
@@ -172,7 +173,7 @@ index 403e1b307f..eb8dcdf810 100644
    return result;
  }
  
-@@ -5356,6 +5501,33 @@ void WebGLRenderingContextBase::ReadPixelsHelper(GLint x,
+@@ -5372,6 +5518,42 @@ void WebGLRenderingContextBase::ReadPixelsHelper(GLint x,
      }
      ContextGL()->ReadPixels(x, y, width, height, format, type, data);
    }
@@ -192,15 +193,24 @@ index 403e1b307f..eb8dcdf810 100644
 +    uint64_t seed = 0;
 +    if (fury::GetCanvasNoiseSeed(&seed)) {
 +      const size_t row_bytes = static_cast<size_t>(width) * 4;
-+      fury::ApplyCanvasNoise(
-+          seed,
-+          // SAFETY: the caller sized this buffer for width * height RGBA
-+          // pixels, which ReadPixels has just filled.
-+          UNSAFE_BUFFERS(base::span(static_cast<uint8_t*>(data),
-+                                    row_bytes * static_cast<size_t>(height))),
-+          width, height, row_bytes, x, y,
-+          // GL_RGBA/GL_UNSIGNED_BYTE, which is the condition above.
-+          fury::ChannelOrder::kRGBA);
++      // SAFETY: the caller sized this buffer for width * height RGBA pixels,
++      // which ReadPixels has just filled.
++      base::span<uint8_t> read_back = UNSAFE_BUFFERS(base::span(
++          static_cast<uint8_t*>(data), row_bytes * static_cast<size_t>(height)));
++      // Only coverage at antialiased edges moves. A framebuffer cleared to one
++      // colour reads back as that colour on every GPU -- a solid 16x16 clear
++      // came back with 34 of its 256 pixels moved under the old noise -- and a
++      // smooth-shaded triangle is a ramp a page can check for smoothness:
++      // pixelscan said "Masking detected" with WebGL noise alone and nothing
++      // with 2D noise alone (Windows build box, 29.09.2026).
++      const std::vector<uint8_t> original(read_back.begin(), read_back.end());
++      // Coverage at antialiased edges only; flat areas and shaded interiors
++      // stay exact. See fury_flat.h. The region is its own world: neighbours
++      // outside what was read are not considered.
++      fury_flat::ApplyEdgeNoise(seed, base::span(original), read_back,
++                                row_bytes, x, y, width, height, x, y, width,
++                                height, x + width, y + height, /*bgra=*/false,
++                                /*opaque_blends=*/false);
 +    }
 +  }
  }

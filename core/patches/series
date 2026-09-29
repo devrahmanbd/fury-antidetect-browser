@@ -135,6 +135,13 @@
 # image, a blur, a blend — and cleared by reset; all three readbacks ask it.
 # WebGL and every other context keep their noise unconditionally.
 #
+# And shaped like a rasteriser, not like salt (29.09.2026). Noise now moves
+# coverage at antialiased edges, in premultiplied space, and blends inside
+# opaque content; it never paints a single-colour glyph's interior another
+# colour and never moves a flat area. An unscaled drawImage of a decoded
+# <img> counts as an exact copy. Measured on the Windows box: with 2D noise
+# alone pixelscan says "No masking detected". fury_flat.h holds the rule.
+#
 # toBlob() was a hole until then: on the main thread it encodes progressively
 # from the source pixels and never reached ImageDataBuffer, so it returned the
 # REAL canvas beside a noised toDataURL(). CanvasAsyncBlobCreator now noises
@@ -146,6 +153,12 @@
 # readPixels noise lives here too — spoofing the renderer string while leaving
 # the rendered pixels real would be pointless, the pixels are the harder
 # fingerprint.
+#
+# readPixels noise is coverage at edges only (29.09.2026). Noise in a smooth
+# shaded ramp is what pixelscan caught -- "Masking detected" with WebGL noise
+# alone -- so a scene that is all ramp and no edge now reads back as the
+# machine renders it, the same for every profile there. Edged scenes, which
+# is what fingerprinting draws, still differ per seed (measured).
 0031-webgl-params.patch!         # webgl_rendering_context_base.cc is hot!
 # Limits are driven by the same SUPPORTED_LIMITS X-macro the getters use, so a
 # limit Chromium adds upstream is covered the moment it appears in that list.
@@ -167,6 +180,13 @@
 # --- fonts ------------------------------------------------------------------
 # Filters at the fallback layer, not just the enumeration API — measurement
 # through canvas bypasses any list-only filter.
+#
+# A blocklist now, not an allowlist (29.09.2026): "fontsHidden" names what the
+# persona is known not to have -- probed and absent, or another OS's own --
+# and wins over "fonts". The allowlist hid every family the capture never
+# probed, Helvetica, Times and PingFang on a real Mac among them, and alone
+# made pixelscan say "Masking detected" and iphey "roadmap". shared-rs
+# fonts.rs builds the list.
 0050-font-fallback-filter.patch
 
 # --- devices ----------------------------------------------------------------

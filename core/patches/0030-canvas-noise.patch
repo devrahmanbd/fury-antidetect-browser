@@ -1,17 +1,18 @@
 diff --git a/third_party/blink/renderer/core/html/canvas/canvas_async_blob_creator.cc b/third_party/blink/renderer/core/html/canvas/canvas_async_blob_creator.cc
-index 8e9d842904..7d8cd69caa 100644
+index 8e9d842904..4ded23674e 100644
 --- a/third_party/blink/renderer/core/html/canvas/canvas_async_blob_creator.cc
 +++ b/third_party/blink/renderer/core/html/canvas/canvas_async_blob_creator.cc
-@@ -4,6 +4,8 @@
+@@ -4,6 +4,9 @@
  
  #include "third_party/blink/renderer/core/html/canvas/canvas_async_blob_creator.h"
  
 +#include "components/fury/fury_noise.h"
++#include "third_party/blink/renderer/platform/graphics/fury_flat.h"
 +
  #include "base/location.h"
  #include "base/metrics/histogram_functions.h"
  #include "base/metrics/histogram_macros.h"
-@@ -237,6 +239,34 @@ CanvasAsyncBlobCreator::CanvasAsyncBlobCreator(
+@@ -237,6 +240,39 @@ CanvasAsyncBlobCreator::CanvasAsyncBlobCreator(
  
  CanvasAsyncBlobCreator::~CanvasAsyncBlobCreator() = default;
  
@@ -33,12 +34,17 @@ index 8e9d842904..7d8cd69caa 100644
 +  // SAFETY: src_data_ describes exactly `total` bytes owned by skia_image_.
 +  UNSAFE_BUFFERS(
 +      memcpy(fury_noised_pixels_.data(), src_data_.addr(), total));
-+  fury::ApplyCanvasNoise(seed, base::span(fury_noised_pixels_),
-+                         src_data_.width(), src_data_.height(),
-+                         src_data_.rowBytes(), /*origin_x=*/0, /*origin_y=*/0,
-+                         type == kBGRA_8888_SkColorType
-+                             ? fury::ChannelOrder::kBGRA
-+                             : fury::ChannelOrder::kRGBA);
++  // Premultiplied, as src_data_ is; see fury_flat.h. src_data_ still points
++  // at the source here.
++  fury_flat::ApplyEdgeNoise(
++      seed,
++      // SAFETY: src_data_ describes exactly `total` bytes.
++      UNSAFE_BUFFERS(base::span(static_cast<const uint8_t*>(src_data_.addr()),
++                                total)),
++      base::span(fury_noised_pixels_), src_data_.rowBytes(), 0, 0,
++      src_data_.width(), src_data_.height(), 0, 0, src_data_.width(),
++      src_data_.height(), src_data_.width(), src_data_.height(),
++      type == kBGRA_8888_SkColorType);
 +  src_data_.reset(src_data_.info(), fury_noised_pixels_.data(),
 +                  src_data_.rowBytes());
 +}
@@ -154,19 +160,20 @@ index fab79aa8c5..e0c219b118 100644
      return resolver->Promise();
    }
 diff --git a/third_party/blink/renderer/modules/canvas/canvas2d/base_rendering_context_2d.cc b/third_party/blink/renderer/modules/canvas/canvas2d/base_rendering_context_2d.cc
-index 89fcf5f32b..0fd4fcf4bb 100644
+index 89fcf5f32b..c9aa9a6734 100644
 --- a/third_party/blink/renderer/modules/canvas/canvas2d/base_rendering_context_2d.cc
 +++ b/third_party/blink/renderer/modules/canvas/canvas2d/base_rendering_context_2d.cc
-@@ -4,6 +4,8 @@
+@@ -4,6 +4,9 @@
  
  #include "third_party/blink/renderer/modules/canvas/canvas2d/base_rendering_context_2d.h"
  
 +#include "components/fury/fury_noise.h"
++#include "third_party/blink/renderer/platform/graphics/fury_flat.h"
 +
  #include <cmath>
  #include <cstdint>
  #include <cstdlib>
-@@ -516,6 +518,42 @@ ImageData* BaseRenderingContext2D::getImageDataInternal(
+@@ -516,6 +519,73 @@ ImageData* BaseRenderingContext2D::getImageDataInternal(
            snapshot->PaintImageForCurrentFrame().GetSkImageInfo().bounds();
        DCHECK(!bounds.intersect(SkIRect::MakeXYWH(sx, sy, sw, sh)));
      }
@@ -192,28 +199,59 @@ index 89fcf5f32b..0fd4fcf4bb 100644
 +    CanvasRenderingContextHost* fury_host = GetCanvasRenderingContextHost();
 +    if (fury::GetCanvasNoiseSeed(&noise_seed) &&
 +        (!fury_host || fury_host->FuryWantsCanvasNoise())) {
-+      SkPixmap noised = image_data->GetSkPixmap();
-+      if (noised.writable_addr() && noised.rowBytes() > 0) {
-+        fury::ApplyCanvasNoise(
-+            noise_seed,
-+            // SAFETY: ImageData owns this buffer; height * rowBytes is its
-+            // exact size.
-+            UNSAFE_BUFFERS(base::span(
-+                static_cast<uint8_t*>(noised.writable_addr()),
-+                noised.rowBytes() * static_cast<size_t>(noised.height()))),
-+            noised.width(), noised.height(), noised.rowBytes(), sx, sy,
-+            // ImageData is RGBA8888 by specification, on every platform.
-+            fury::ChannelOrder::kRGBA);
++      SkPixmap out = image_data->GetSkPixmap();
++      // The region with a one-pixel margin, clipped to the canvas, read
++      // PREMULTIPLIED from the same snapshot, noised there (fury_flat.h), and
++      // converted to ImageData's unpremultiplied RGBA by Skia -- the same
++      // arithmetic toDataURL's encoder applies to the same noised pixels, so
++      // the two agree byte for byte.
++      const int cw = snapshot->Size().width();
++      const int ch = snapshot->Size().height();
++      const int ox = std::max(0, sx - 1);
++      const int oy = std::max(0, sy - 1);
++      const int ow = std::min(cw, sx + sw + 1) - ox;
++      const int oh = std::min(ch, sy + sh + 1) - oy;
++      const int ix = std::max(0, sx);
++      const int iy = std::max(0, sy);
++      const int iw = std::min(cw, sx + sw) - ix;
++      const int ih = std::min(ch, sy + sh) - iy;
++      if (out.writable_addr() && out.rowBytes() > 0 && ow > 0 && oh > 0 &&
++          iw > 0 && ih > 0 && out.colorType() == kRGBA_8888_SkColorType) {
++        const SkImageInfo premul =
++            SkImageInfo::Make(ow, oh, kRGBA_8888_SkColorType,
++                              kPremul_SkAlphaType, out.info().refColorSpace());
++        const size_t premul_row_bytes = premul.minRowBytes();
++        Vector<uint8_t> original(
++            static_cast<wtf_size_t>(premul_row_bytes * oh));
++        if (snapshot->PaintImageForCurrentFrame().readPixels(
++                premul, original.data(), premul_row_bytes, ox, oy)) {
++          Vector<uint8_t> noised_premul = original;
++          fury_flat::ApplyEdgeNoise(noise_seed, base::span(original),
++                                    base::span(noised_premul),
++                                    premul_row_bytes, ox, oy, ow, oh, ix, iy,
++                                    iw, ih, cw, ch, /*bgra=*/false);
++          SkPixmap noised_pixmap(premul, noised_premul.data(),
++                                 premul_row_bytes);
++          const SkImageInfo dst_info = out.info().makeWH(iw, ih);
++          // SAFETY: (ix - sx, iy - sy) lies inside the ImageData, and iw x ih
++          // fits in what remains of it.
++          uint8_t* dst = UNSAFE_BUFFERS(
++              static_cast<uint8_t*>(out.writable_addr()) +
++              static_cast<size_t>(iy - sy) * out.rowBytes() +
++              static_cast<size_t>(ix - sx) * 4);
++          noised_pixmap.readPixels(dst_info, dst, out.rowBytes(), ix - ox,
++                                   iy - oy);
++        }
 +      }
 +    }
    }
  
    return image_data;
 diff --git a/third_party/blink/renderer/modules/canvas/canvas2d/canvas_2d_recorder_context.cc b/third_party/blink/renderer/modules/canvas/canvas2d/canvas_2d_recorder_context.cc
-index 1d6240bf07..f1a73ff14d 100644
+index 1d6240bf07..08fecaac74 100644
 --- a/third_party/blink/renderer/modules/canvas/canvas2d/canvas_2d_recorder_context.cc
 +++ b/third_party/blink/renderer/modules/canvas/canvas2d/canvas_2d_recorder_context.cc
-@@ -849,6 +849,50 @@ void Canvas2DRecorderContext::ResetInternal() {
+@@ -849,6 +849,61 @@ void Canvas2DRecorderContext::ResetInternal() {
  
    ValidateStateStack();
    origin_tainted_by_content_ = false;
@@ -239,6 +277,17 @@ index 1d6240bf07..f1a73ff14d 100644
 +  if (draw_type == DrawType::kImageData) {
 +    // putImageData: the page's own bytes, copied.
 +    platform_dependent = false;
++  } else if (draw_type == DrawType::kImage && fury_exact_image_draw_) {
++    // An unscaled raster copy (drawImage decided that) stays exact only under
++    // the same conditions as a solid rect: a pixel-aligned translation at
++    // most, nothing blurred, nothing blended in.
++    const AffineTransform& t = state.GetTransform();
++    platform_dependent =
++        !(t.IsIdentityOrTranslation() && t.E() == std::round(t.E()) &&
++          t.F() == std::round(t.F())) ||
++        state.ShouldDrawShadows() || state.IsFilterUnresolved() ||
++        state.IsFilterResolved() || state.GlobalAlpha() != 1.0 ||
++        state.GlobalComposite() != SkBlendMode::kSrcOver;
 +  } else if (draw_type == DrawType::kRectangle &&
 +             paint_type == CanvasRenderingContext2DState::kFillPaintType) {
 +    // fillRect is exact only in the plain case: a solid colour, fully
@@ -264,16 +313,54 @@ index 1d6240bf07..f1a73ff14d 100644
  }
  
  void Canvas2DRecorderContext::reset() {
+@@ -2323,6 +2378,25 @@ void Canvas2DRecorderContext::drawImage(CanvasImageSource* image_source,
+     SetOriginTaintedByContent();
+   }
+ 
++  // A decoded PNG or JPEG copied at its own size onto whole pixels is the same
++  // bytes on every machine. pixelscan relies on exactly that: it fills a strip
++  // with solid colours, round-trips it through toDataURL into an <img>, draws
++  // that onto a fresh canvas and checks each 5x5 block is still one colour.
++  // Counting every drawImage as platform-dependent noised those blocks, and
++  // pixelscan said "Masking detected" (29.09.2026). A canvas, video, frame or
++  // ImageBitmap source still counts: their pixels were never noised, and
++  // copying them unnoised would be a way around the noise. So does SVG, which
++  // renders text with the machine's fonts, and any scaling.
++  fury_exact_image_draw_ =
++      image_source->IsImageElement() && image && image->IsBitmapImage() &&
++      src_rect.size() == dst_rect.size() &&
++      src_rect.x() == std::round(src_rect.x()) &&
++      src_rect.y() == std::round(src_rect.y()) &&
++      dst_rect.x() == std::round(dst_rect.x()) &&
++      dst_rect.y() == std::round(dst_rect.y()) &&
++      dst_rect.width() == std::round(dst_rect.width()) &&
++      dst_rect.height() == std::round(dst_rect.height());
++
+   Draw<OverdrawOp::kDrawImage>(
+       /*draw_func=*/
+       [this, image_source, image, src_rect, dst_rect](
+@@ -2342,6 +2416,7 @@ void Canvas2DRecorderContext::drawImage(CanvasImageSource* image_source,
+       image_source->IsOpaque() ? CanvasRenderingContext2DState::kOpaqueImage
+                                : CanvasRenderingContext2DState::kNonOpaqueImage,
+       CanvasPerformanceMonitor::DrawType::kImage);
++  fury_exact_image_draw_ = false;
+ }
+ 
+ bool Canvas2DRecorderContext::RectContainsTransformedRect(
 diff --git a/third_party/blink/renderer/modules/canvas/canvas2d/canvas_2d_recorder_context.h b/third_party/blink/renderer/modules/canvas/canvas2d/canvas_2d_recorder_context.h
-index 91dad8914b..b9bfc40219 100644
+index 91dad8914b..08b98dfdec 100644
 --- a/third_party/blink/renderer/modules/canvas/canvas2d/canvas_2d_recorder_context.h
 +++ b/third_party/blink/renderer/modules/canvas/canvas2d/canvas_2d_recorder_context.h
-@@ -490,6 +490,13 @@ class MODULES_EXPORT Canvas2DRecorderContext : public CanvasPath {
+@@ -490,6 +490,17 @@ class MODULES_EXPORT Canvas2DRecorderContext : public CanvasPath {
      return nullptr;
    }
  
 +  // Fury: tells the host whether this draw is one a machine renders its own
 +  // way. See CanvasRenderingContextHost::FuryWantsCanvasNoise.
++  // Set by drawImage for the one call it is about to make when that call is a
++  // plain copy of a decoded raster image: see FuryNoteDraw.
++  bool fury_exact_image_draw_ = false;
++
 +  void FuryNoteDraw(const CanvasRenderingContext2DState& state,
 +                    CanvasRenderingContext2DState::PaintType paint_type,
 +                    CanvasPerformanceMonitor::DrawType draw_type,
@@ -282,7 +369,7 @@ index 91dad8914b..b9bfc40219 100644
    virtual bool HasAlpha() const = 0;
  
    virtual bool IsDesynchronized() const { NOTREACHED(); }
-@@ -804,6 +811,7 @@ void Canvas2DRecorderContext::DrawInternal(
+@@ -804,6 +815,7 @@ void Canvas2DRecorderContext::DrawInternal(
      }
    }
    const CanvasRenderingContext2DState& state = GetState();
@@ -290,20 +377,181 @@ index 91dad8914b..b9bfc40219 100644
    SkBlendMode global_composite = state.GlobalComposite();
    if (ShouldUseCompositedDraw(paint_type, image_type)) {
      WillDraw(gfx::SkIRectToRect(clip_bounds), draw_type);
+diff --git a/third_party/blink/renderer/platform/graphics/fury_flat.h b/third_party/blink/renderer/platform/graphics/fury_flat.h
+new file mode 100644
+index 0000000000..cd3042cc1b
+--- /dev/null
++++ b/third_party/blink/renderer/platform/graphics/fury_flat.h
+@@ -0,0 +1,154 @@
++// Copyright 2026 The Fury Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#ifndef THIRD_PARTY_BLINK_RENDERER_PLATFORM_GRAPHICS_FURY_FLAT_H_
++#define THIRD_PARTY_BLINK_RENDERER_PLATFORM_GRAPHICS_FURY_FLAT_H_
++
++#include <array>
++#include <cstddef>
++#include <cstdint>
++#include <utility>
++
++#include "base/containers/span.h"
++
++// Canvas noise that looks like a different rasteriser, not like noise.
++//
++// The first noise touched one opaque pixel in eight, anywhere, by +/-1 in one
++// colour channel. pixelscan still said "Masking detected" after everything
++// else it tests was passing (29.09.2026), and the pattern it had to go on is
++// measurable: a single-colour string drawn on a transparent canvas has every
++// opaque pixel exactly the fill colour in real Chrome -- 429 of 429 measured --
++// and 55 of them were not, once noised. No rasteriser paints the inside of a
++// glyph a different colour.
++//
++// What does differ between machines is coverage at edges and the arithmetic of
++// blends. So:
++//   - transparent pixels are never touched;
++//   - a partly covered pixel (0 < alpha < 255) gets its coverage moved by one
++//     step, in premultiplied space, which is exactly what another rasteriser
++//     produces there -- the colour stays the fill colour;
++//   - an opaque pixel is touched only where it is a transition inside opaque
++//     content: different from every neighbour, and every neighbour opaque, as
++//     antialiased text over a filled rect or overlapping blended shapes are;
++//   - anything flat, every neighbour the same, stays exact.
++//
++// WebGL passes opaque_blends = false. Its scenes are smooth shaded
++// triangles, and an opaque pixel inside a gradient differs from all four
++// neighbours by construction: noising those broke the ramp, and pixelscan
++// reported "Masking detected" with WebGL noise alone and not with 2D noise
++// alone (measured on the Windows build box, 29.09.2026). Coverage at the
++// edges is what differs between GPUs there, so that is all WebGL moves.
++//
++// Pixels are PREMULTIPLIED here, on every path. toDataURL and toBlob encode
++// from premultiplied pixels, and getImageData converts its noised premultiplied
++// copy with Skia, so all three agree byte for byte. Coordinates are absolute
++// canvas coordinates; a neighbour outside the canvas is not considered, so a
++// partial read decides every pixel as a whole-canvas read does.
++namespace fury_flat {
++
++inline uint64_t Mix(uint64_t z) {
++  z += 0x9e3779b97f4a7c15ULL;
++  z = (z ^ (z >> 30)) * 0xbf58476d1ce4e5b9ULL;
++  z = (z ^ (z >> 27)) * 0x94d049bb133111ebULL;
++  return z ^ (z >> 31);
++}
++
++// `original` and `noised` are the same premultiplied 4-byte pixels covering
++// the canvas rectangle [ox, ox+ow) x [oy, oy+oh), `row_bytes` apart. Pixels
++// inside [nx, nx+nw) x [ny, ny+nh) are noised in `noised`; the rest of the
++// rectangle is the margin a partial read supplies for its neighbours. The
++// canvas is [0, cw) x [0, ch). `bgra` says where red and blue sit.
++inline void ApplyEdgeNoise(uint64_t seed,
++                           base::span<const uint8_t> original,
++                           base::span<uint8_t> noised,
++                           size_t row_bytes,
++                           int ox,
++                           int oy,
++                           int ow,
++                           int oh,
++                           int nx,
++                           int ny,
++                           int nw,
++                           int nh,
++                           int cw,
++                           int ch,
++                           bool bgra,
++                           bool opaque_blends = true) {
++  auto usable = [&](int x, int y) {
++    return x >= 0 && y >= 0 && x < cw && y < ch && x >= ox && y >= oy &&
++           x < ox + ow && y < oy + oh;
++  };
++  auto at = [&](int x, int y) -> size_t {
++    return static_cast<size_t>(y - oy) * row_bytes +
++           static_cast<size_t>(x - ox) * 4;
++  };
++  auto equal = [&](size_t a, size_t b) {
++    return original[a] == original[b] && original[a + 1] == original[b + 1] &&
++           original[a + 2] == original[b + 2] &&
++           original[a + 3] == original[b + 3];
++  };
++  static constexpr std::array<std::pair<int, int>, 4> kNeighbours = {
++      {{-1, 0}, {1, 0}, {0, -1}, {0, 1}}};
++  for (int y = ny; y < ny + nh; ++y) {
++    for (int x = nx; x < nx + nw; ++x) {
++      if (!usable(x, y)) {
++        continue;
++      }
++      const size_t p = at(x, y);
++      if (p + 3 >= original.size() || p + 3 >= noised.size()) {
++        continue;
++      }
++      const uint8_t alpha = original[p + 3];
++      if (alpha == 0) {
++        continue;
++      }
++      bool all_equal = true;
++      bool none_equal = true;
++      bool all_opaque = true;
++      for (const auto& d : kNeighbours) {
++        const int qx = x + d.first;
++        const int qy = y + d.second;
++        if (!usable(qx, qy)) {
++          continue;
++        }
++        const size_t q = at(qx, qy);
++        if (q + 3 >= original.size()) {
++          continue;
++        }
++        const bool same = equal(p, q);
++        all_equal = all_equal && same;
++        none_equal = none_equal && !same;
++        all_opaque = all_opaque && original[q + 3] == 255;
++      }
++      if (all_equal) {
++        continue;
++      }
++      const uint64_t h = Mix(seed ^ (static_cast<uint64_t>(x) * 0x100000001b3ULL) ^
++                             (static_cast<uint64_t>(y) << 32));
++      if (h & 1) {
++        continue;
++      }
++      if (alpha < 255) {
++        // Coverage, one step, colour kept inside the new coverage.
++        const int next = (h & 2) ? alpha + 1 : alpha - 1;
++        const uint8_t a2 = static_cast<uint8_t>(next < 1 ? 1 : next > 254 ? 254 : next);
++        noised[p + 3] = a2;
++        for (size_t c = 0; c < 3; ++c) {
++          if (noised[p + c] > a2) {
++            noised[p + c] = a2;
++          }
++        }
++      } else if (opaque_blends && none_equal && all_opaque) {
++        const size_t colour = (h >> 3) % 3;
++        const size_t channel = (bgra && colour != 1) ? 2 - colour : colour;
++        uint8_t& v = noised[p + channel];
++        v = ((h >> 5) & 1) ? (v < 255 ? v + 1 : v - 1) : (v > 0 ? v - 1 : v + 1);
++      }
++    }
++  }
++}
++
++}  // namespace fury_flat
++
++#endif  // THIRD_PARTY_BLINK_RENDERER_PLATFORM_GRAPHICS_FURY_FLAT_H_
 diff --git a/third_party/blink/renderer/platform/graphics/image_data_buffer.cc b/third_party/blink/renderer/platform/graphics/image_data_buffer.cc
-index d05ea261a9..f1caeebbd3 100644
+index d05ea261a9..b205eb2c12 100644
 --- a/third_party/blink/renderer/platform/graphics/image_data_buffer.cc
 +++ b/third_party/blink/renderer/platform/graphics/image_data_buffer.cc
-@@ -32,6 +32,8 @@
+@@ -32,6 +32,9 @@
  
  #include "third_party/blink/renderer/platform/graphics/image_data_buffer.h"
  
 +#include "components/fury/fury_noise.h"
++#include "third_party/blink/renderer/platform/graphics/fury_flat.h"
 +
  #include "base/compiler_specific.h"
  #include "base/logging.h"
  #include "base/memory/ptr_util.h"
-@@ -122,6 +124,43 @@ std::unique_ptr<ImageDataBuffer> ImageDataBuffer::Create(
+@@ -122,6 +125,48 @@ std::unique_ptr<ImageDataBuffer> ImageDataBuffer::Create(
    return buffer;
  }
  
@@ -333,12 +581,17 @@ index d05ea261a9..f1caeebbd3 100644
 +  // Not RGBA here: this pixmap is the canvas's own backing store, which is N32
 +  // — BGRA8888 on macOS and Windows. Asking it rather than assuming is what
 +  // keeps the encoded PNG agreeing with getImageData.
-+  fury::ApplyCanvasNoise(seed, base::span(fury_noised_pixels_),
-+                         pixmap_.width(), pixmap_.height(), pixmap_.rowBytes(),
-+                         /*origin_x=*/0, /*origin_y=*/0,
-+                         pixmap_.colorType() == kBGRA_8888_SkColorType
-+                             ? fury::ChannelOrder::kBGRA
-+                             : fury::ChannelOrder::kRGBA);
++  // Premultiplied here, as the canvas's backing store is; see fury_flat.h for
++  // what is noised and why. pixmap_ still points at the original.
++  fury_flat::ApplyEdgeNoise(
++      seed,
++      // SAFETY: pixmap_ describes exactly `total` bytes.
++      UNSAFE_BUFFERS(base::span(static_cast<const uint8_t*>(pixmap_.addr()),
++                                total)),
++      base::span(fury_noised_pixels_), pixmap_.rowBytes(), 0, 0,
++      pixmap_.width(), pixmap_.height(), 0, 0, pixmap_.width(),
++      pixmap_.height(), pixmap_.width(), pixmap_.height(),
++      pixmap_.colorType() == kBGRA_8888_SkColorType);
 +
 +  pixmap_.reset(pixmap_.info(), fury_noised_pixels_.data(),
 +                pixmap_.rowBytes());

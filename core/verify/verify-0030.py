@@ -42,6 +42,12 @@ What 0030 claims is harder, and each part is checkable:
      says so of a real Chrome. Noise starts with the first draw a machine
      renders its own way (text, a path, an image, a blur) and ends at reset.
 
+  9. IT LOOKS LIKE A RASTERISER. Noise moves coverage at antialiased edges
+     and blends inside opaque content; it never paints the inside of a
+     single-colour glyph another colour (real Chrome: 0 of 429 such pixels
+     off-colour) and never moves a flat area. The first noise did both, and
+     pixelscan said "Masking detected" until it stopped (29.09.2026).
+
   8. toBlob() AGREES. On the main thread toBlob() encodes progressively from
      the source pixels and never touched ImageDataBuffer, so before 27.09.2026
      it returned the canvas's REAL pixels beside a noised toDataURL() — the
@@ -107,7 +113,8 @@ READ = """
   const off = new OffscreenCanvas(240, 120);
   const ox = off.getContext('2d');
   // Text first, so this canvas is one that gets noise at all (claim 7), then a
-  // fill over all of it, so every pixel's intended value is known.
+  // fill over all of it: every pixel's intended value is known, and a flat
+  // fill must come back exact even on a noised canvas (claim 9).
   ox.font = '10px sans-serif'; ox.fillText('x', 2, 10);
   ox.fillStyle = '#f60'; ox.fillRect(0, 0, 240, 120);
   const offData = ox.getImageData(0, 0, 240, 120);
@@ -132,6 +139,16 @@ READ = """
     corner,
     dataURL: c.toDataURL('image/png'),
     dataURLAgain: c.toDataURL('image/png'),
+    glyphs: (() => {
+      const t = document.createElement('canvas'); t.width = 300; t.height = 60;
+      const tx = t.getContext('2d'); tx.fillStyle = '#006699'; tx.font = '24px Arial';
+      tx.fillText('Cwm fjordbank glyphs vext quiz', 4, 40);
+      const d = tx.getImageData(0, 0, 300, 60).data;
+      let opaqueOff = 0;
+      for (let i = 0; i < d.length; i += 4)
+        if (d[i+3] === 255 && !(d[i] === 0 && d[i+1] === 0x66 && d[i+2] === 0x99)) opaqueOff++;
+      return {opaqueOff, hex: hex(d)};
+    })(),
     flatMoved: moved, flatWorst: worst, flatTotal: offData.data.length / 4,
   });
 })()
@@ -147,10 +164,11 @@ WORKER = """
     x.font = '10px sans-serif'; x.fillText('x', 2, 10);
     x.fillStyle = '#f60'; x.fillRect(0, 0, 64, 64);
     const d = x.getImageData(0, 0, 64, 64).data;
-    let moved = 0;
-    for (let i = 0; i < d.length; i += 4)
-      if (d[i] !== 255 || d[i + 1] !== 102 || d[i + 2] !== 0) moved++;
-    postMessage(String(moved));
+    const t = new OffscreenCanvas(300, 60); const tx = t.getContext('2d');
+    tx.fillStyle = '#006699'; tx.font = '24px sans-serif'; tx.fillText('Cwm fjordbank glyphs vext quiz', 4, 40);
+    const g = tx.getImageData(0, 0, 300, 60).data;
+    let h = 0; for (let i = 0; i < g.length; i++) h = (h * 31 + g[i]) >>> 0;
+    postMessage(String(h));
   `;
   const w = new Worker(URL.createObjectURL(new Blob([src])));
   const out = await new Promise((r) => { w.onmessage = (e) => r(e.data); });
@@ -298,21 +316,12 @@ def main():
                      "ImageDataBuffer and BaseRenderingContext2D are two paths "
                      "and a site can compare them")
 
-        # Small, measured on a flat #f60 fill where every pixel's intended
-        # value is known exactly.
-        share = a["flatMoved"] / a["flatTotal"]
-        claims.check(a["flatWorst"] == 1,
-                     f"no pixel of a flat fill moved by more than 1 "
-                     f"(worst was {a['flatWorst']})")
-        claims.check(0.05 < share < 0.25,
-                     f"and {share:.1%} of them moved at all — enough to change "
-                     f"every hash, little enough to be invisible "
-                     f"({a['flatMoved']} of {a['flatTotal']})")
-
-        claims.check(int(a_worker) > 0,
-                     f"a Worker's OffscreenCanvas is noised too — same "
-                     f"BaseRenderingContext2D, no document ({a_worker} of 4096 "
-                     f"pixels moved)")
+        claims.check(a["flatMoved"] == 0,
+                     f"a flat fill comes back exact even on a noised canvas "
+                     f"({a['flatMoved']} of {a['flatTotal']} pixels moved)")
+        claims.check(a["glyphs"]["opaqueOff"] == 0,
+                     f"no opaque pixel of single-colour text is another colour "
+                     f"({a['glyphs']['opaqueOff']} off)")
 
         exact = json.loads(s.js(EXACT))
         claims.check(exact["gridWrong"] == 0,
@@ -351,6 +360,16 @@ def main():
 
     with launch(CORE, None) as s:
         bare = json.loads(s.js(READ))
+        bare_worker = s.js(WORKER)
+        ga, gb = bytes.fromhex(a["glyphs"]["hex"]), bytes.fromhex(bare["glyphs"]["hex"])
+        moved = sum(1 for i in range(0, len(ga), 4) if ga[i:i+4] != gb[i:i+4])
+        worst = max((abs(x - y) for x, y in zip(ga, gb)), default=0)
+        claims.check(0 < moved and worst <= 1,
+                     f"text is noised, by one step at most: {moved} pixels moved, "
+                     f"worst {worst}")
+        claims.check(a_worker != bare_worker,
+                     f"a Worker's OffscreenCanvas is noised too — same "
+                     f"BaseRenderingContext2D, no document")
         bare_blob = json.loads(s.js(BLOB))
         _, _, bare_blob_px = decode_png(bare_blob["blob"])
         claims.check(bare_blob_px[:4096].hex() != blob["whole"],

@@ -81,7 +81,12 @@ PROBE = """
   gl.attachShader(pr, vs); gl.attachShader(pr, fs); gl.linkProgram(pr); gl.useProgram(pr);
   const buf = gl.createBuffer();
   gl.bindBuffer(gl.ARRAY_BUFFER, buf);
-  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 3,-1, -1,3]), gl.STATIC_DRAW);
+  // A triangle with edges over a transparent clear, not a full-screen one.
+  // Since 29.09.2026 only coverage at antialiased edges is noised: noise
+  // inside a smooth-shaded ramp is what pixelscan caught, so a scene that is
+  // all ramp and no edge now reads back as the machine renders it, the same
+  // for every profile on that machine. That is the price, stated here.
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-.8,-.8, .8,-.8, 0,.8]), gl.STATIC_DRAW);
   const loc = gl.getAttribLocation(pr, 'p');
   gl.enableVertexAttribArray(loc);
   gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
@@ -90,7 +95,10 @@ PROBE = """
   const read = () => {
     const px = new Uint8Array(64 * 64 * 4);
     gl.readPixels(0, 0, 64, 64, gl.RGBA, gl.UNSIGNED_BYTE, px);
-    return Array.from(px.slice(0, 256)).join(',');
+    // The whole frame: the triangle no longer reaches the bottom row, which
+    // is all the first 256 bytes ever held.
+    let h = 0; for (let i = 0; i < px.length; i++) h = (h * 31 + px[i]) >>> 0;
+    return String(h);
   };
 
   return JSON.stringify({
@@ -109,6 +117,14 @@ PROBE = """
     extensions: gl.getSupportedExtensions(),
     pixels: read(),
     pixelsAgain: read(),
+    solidOdd: (() => {
+      const s = document.createElement('canvas'); s.width = 16; s.height = 16;
+      const g = s.getContext('webgl'); g.clearColor(0.2, 0.4, 0.6, 1); g.clear(g.COLOR_BUFFER_BIT);
+      const px = new Uint8Array(16 * 16 * 4); g.readPixels(0, 0, 16, 16, g.RGBA, g.UNSIGNED_BYTE, px);
+      let odd = 0; for (let i = 4; i < px.length; i += 4)
+        if (px[i] !== px[0] || px[i+1] !== px[1] || px[i+2] !== px[2]) odd++;
+      return odd;
+    })(),
   });
 })()
 """
@@ -172,6 +188,9 @@ def main():
         claims.check(a["pixels"] == a["pixelsAgain"],
                      "readPixels twice gives the same bytes — the same rule as "
                      "canvas, and for the same reason")
+        claims.check(a["solidOdd"] == 0,
+                     f"a framebuffer cleared to one colour reads back as that "
+                     f"colour ({a['solidOdd']} of 255 pixels moved)")
 
     with launch(CORE, {"gpu": {"webglParams": PARAMS},
                        "noise": {"canvasSeed": 0x061A0002}}) as s:
