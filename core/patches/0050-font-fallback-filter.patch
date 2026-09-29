@@ -1,16 +1,17 @@
 diff --git a/third_party/blink/renderer/platform/fonts/font_cache.cc b/third_party/blink/renderer/platform/fonts/font_cache.cc
-index 636e2ca661..6eafb70e6c 100644
+index 636e2ca661..0a5fcd27a8 100644
 --- a/third_party/blink/renderer/platform/fonts/font_cache.cc
 +++ b/third_party/blink/renderer/platform/fonts/font_cache.cc
-@@ -45,6 +45,7 @@
+@@ -45,6 +45,8 @@
  #include "base/trace_event/process_memory_dump.h"
  #include "base/trace_event/trace_event.h"
  #include "build/build_config.h"
 +#include "components/fury/fury_config.h"
++#include "third_party/blink/renderer/platform/allow_discouraged_type.h"
  #include "skia/ext/font_utils.h"
  #include "third_party/blink/public/common/features.h"
  #include "third_party/blink/public/platform/platform.h"
-@@ -173,10 +174,135 @@ void FontCache::AcceptLanguagesChanged(const String& accept_languages) {
+@@ -173,10 +175,168 @@ void FontCache::AcceptLanguagesChanged(const String& accept_languages) {
    LayoutLocale::AcceptLanguagesChanged(accept_languages);
  }
  
@@ -28,20 +29,52 @@ index 636e2ca661..6eafb70e6c 100644
 +  return out;
 +}
 +
-+const std::set<std::string>* FuryAllowedFonts() {
-+  static const std::set<std::string>* allowed = [] {
-+    auto* set = new std::set<std::string>();
++// Which families a page may not resolve.
++//
++// Two shapes, and the first one is the reason the second exists.
++//
++// "fonts" alone is an ALLOWLIST: the families the persona's capture found,
++// everything else refused. But a capture only ever asks about the families
++// in its probe's candidate list -- 69 of them -- so a persona's list is that
++// list's intersection with the machine, and every family outside it was
++// refused too. On a real Apple M5 that hid Helvetica, Times, Courier, PingFang
++// SC, Hiragino Sans and Arial Unicode MS, measured 29.09.2026: a Mac without
++// Helvetica and Times, which does not exist. pixelscan answered "Masking
++// detected" and iphey "inconsistent browser fingerprint (roadmap)" for the
++// font list alone, with every other part of the config switched off.
++//
++// "fontsHidden" is a BLOCKLIST, and wins when present: exactly the families
++// the persona is known not to have -- probed and absent, or known to belong
++// to another OS -- and nothing else. What nobody measured behaves as it does
++// on the machine.
++struct FuryFontRule {
++  bool blocklist = false;
++  // Built once per process from the config and only ever read; std::string
++  // keys because the config and the lowering helper already speak them.
++  ALLOW_DISCOURAGED_TYPE("process-wide, immutable after init, std::string keys")
++  std::set<std::string> names;
++};
++
++const FuryFontRule* FuryFonts() {
++  static const FuryFontRule* rule = [] {
++    auto* r = new FuryFontRule();
 +    if (const fury::FuryConfig* config = fury::FuryConfig::Get()) {
-+      if (std::optional<std::vector<std::string>> fonts =
-+              config->GetStringList("fonts")) {
++      if (std::optional<std::vector<std::string>> hidden =
++              config->GetStringList("fontsHidden")) {
++        r->blocklist = true;
++        for (const std::string& name : *hidden) {
++          r->names.insert(FuryLower(name));
++        }
++      } else if (std::optional<std::vector<std::string>> fonts =
++                     config->GetStringList("fonts")) {
 +        for (const std::string& name : *fonts) {
-+          set->insert(FuryLower(name));
++          r->names.insert(FuryLower(name));
 +        }
 +      }
 +    }
-+    return set;
++    return r;
 +  }();
-+  return allowed->empty() ? nullptr : allowed;
++  return rule->names.empty() ? nullptr : rule;
 +}
 +
 +// CSS generic families are keywords, not installed fonts. Blocking them would
@@ -135,9 +168,10 @@ index 636e2ca661..6eafb70e6c 100644
 +  // filter in 0041, for the same reason.
 +  if (altername_font_name != AlternateFontName::kLastResort &&
 +      g_fury_filter_suspended == 0) {
-+    if (const std::set<std::string>* allowed = FuryAllowedFonts()) {
++    if (const FuryFontRule* rule = FuryFonts()) {
 +      const std::string lower = FuryLower(family.Utf8());
-+      if (!FuryIsGenericFamily(lower) && !allowed->count(lower)) {
++      const bool listed = rule->names.count(lower) > 0;
++      if (!FuryIsGenericFamily(lower) && listed == rule->blocklist) {
 +        return nullptr;
 +      }
 +    }

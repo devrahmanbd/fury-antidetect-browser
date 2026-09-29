@@ -13,6 +13,7 @@ pub mod domains;
 pub mod extensions;
 pub mod catalogue;
 pub mod fingerprint;
+pub mod fonts;
 pub mod keys;
 pub mod locale;
 pub mod overrides;

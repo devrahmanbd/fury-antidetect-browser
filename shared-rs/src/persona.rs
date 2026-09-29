@@ -341,6 +341,9 @@ impl Persona {
                 "outputLatency": self.audio.output_latency,
             },
             "fonts": self.fonts,
+            // What the core hides; wins over "fonts" in a core that knows it.
+            // See fonts.rs for why hiding, not allowing.
+            "fontsHidden": crate::fonts::hidden(&self.os.name, &self.fonts),
             "locale": {
                 "timezone": ctx.timezone,
                 // The UI locale, not the first language tag. They differ: a

@@ -497,6 +497,7 @@ pub const CORE_CONFIG_KEYS: &[&str] = &[
     "clientHints.wow64",
     "engine.jsHeapSizeLimit",
     "fonts",
+    "fontsHidden",
     "geolocation.accuracy",
     "geolocation.latitude",
     "geolocation.longitude",
