@@ -263,7 +263,7 @@ impl Agent {
     /// relay went on listening and forwarding to the customer's upstream.
     ///
     /// A poll rather than a wait per child: `stop` already does the whole
-    /// teardown — SIGTERM, relay, heartbeat, lock, and the bundle push for a
+    /// teardown — SIGHUP, relay, heartbeat, lock, and the bundle push for a
     /// team profile — and reaching it from one place keeps a closed-by-hand
     /// profile and a closed-by-button profile on exactly the same path. Two
     /// seconds is far below what anyone notices and costs a `waitpid` per open
@@ -2591,7 +2591,7 @@ impl Agent {
         // afterwards, because the browser never got to write them down. Local
         // profiles were quietly dropping the tail of every session.
         //
-        // `ask_to_close` is a SIGTERM on macOS and a WM_CLOSE on Windows; see
+        // `ask_to_close` is a SIGHUP on macOS and a WM_CLOSE on Windows; see
         // fury_platform::process for why it is a function both platforms have
         // to implement rather than a `#[cfg(unix)]` one of them can skip.
         fury_platform::ask_to_close(&entry.child);

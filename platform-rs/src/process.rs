@@ -14,8 +14,18 @@
 //! Windows. Neither asks. So the agent asks first, waits, and only then kills —
 //! and "asks" is spelled differently on the two systems:
 //!
-//!   Unix    — `SIGTERM`. Chromium installs a handler and runs its normal
-//!             shutdown.
+//!   Unix    — `SIGHUP`. Chromium installs a handler and runs its normal
+//!             shutdown, the same `chrome::Exit()` a menu Quit takes.
+//!             Not `SIGTERM`, which this was until 30.09.2026. From Chromium
+//!             155 a SIGTERM on macOS means "the session is ending" -- logout,
+//!             reboot, an OS update -- and goes to `chrome::SessionEnding()`
+//!             (chrome_browser_main_posix.cc), which exits without writing the
+//!             cookie jar. Measured on the 155 build: SIGTERM, exit in 0.05 s,
+//!             the cookie set two seconds earlier not on disk; SIGHUP and SIGINT,
+//!             exit in 0.14 s, cookie written. 153 flushed on all three, so the
+//!             regression arrived with the milestone and not with a patch.
+//!             Linux has sent SIGTERM to SessionEnding() for longer; SIGHUP is
+//!             Exit() on both.
 //!
 //!   Windows — there are no signals. `TerminateProcess` is what `kill` maps to,
 //!             and `GenerateConsoleCtrlEvent` does not reach a GUI process. The
@@ -24,7 +34,7 @@
 //!             `taskkill` without `/F` does. Chromium treats it as a request to
 //!             quit and takes the same path it takes for a menu Quit.
 //!
-//! This is the difference that a `#[cfg(unix)]` around the SIGTERM would have
+//! This is the difference that a `#[cfg(unix)]` around the signal would have
 //! hidden: on Windows the call would simply not happen, the wait loop would
 //! time out, the kill would land, and profiles would lose their last session
 //! with nothing anywhere saying why. It compiles either way, which is why it is
@@ -45,7 +55,7 @@ pub fn ask_to_close(child: &std::process::Child) -> bool {
     {
         // SAFETY: kill(2) with a pid this process owns. The child has not been
         // reaped — `Child` is still alive — so the pid cannot have been reused.
-        unsafe { libc::kill(child.id() as i32, libc::SIGTERM) == 0 }
+        unsafe { libc::kill(child.id() as i32, libc::SIGHUP) == 0 }
     }
 
     #[cfg(windows)]
@@ -119,7 +129,7 @@ mod tests {
         let mut child = std::process::Command::new("sh")
             .arg("-c")
             .arg(format!(
-                "trap 'echo tidied > {}; exit 0' TERM; while true; do sleep 0.05; done",
+                "trap 'echo tidied > {}; exit 0' HUP; while true; do sleep 0.05; done",
                 marker.display()
             ))
             .spawn()
