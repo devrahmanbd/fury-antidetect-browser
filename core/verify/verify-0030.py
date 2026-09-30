@@ -362,11 +362,31 @@ def main():
         bare = json.loads(s.js(READ))
         bare_worker = s.js(WORKER)
         ga, gb = bytes.fromhex(a["glyphs"]["hex"]), bytes.fromhex(bare["glyphs"]["hex"])
-        moved = sum(1 for i in range(0, len(ga), 4) if ga[i:i+4] != gb[i:i+4])
-        worst = max((abs(x - y) for x, y in zip(ga, gb)), default=0)
-        claims.check(0 < moved and worst <= 1,
+        # By one step, measured where the step is taken. Coverage moves by one
+        # and the colour must stay the fill colour, but getImageData hands back
+        # UNpremultiplied pixels, and at alpha a one premultiplied unit is 255/a
+        # levels there -- real Chrome's own edge pixels scatter by that much
+        # around #006699. So a partly covered pixel may move by the rounding its
+        # NEW coverage allows, 2 + 128/a', and not by more; opaque ones by 1. The
+        # first model kept the premultiplied numbers and moved alpha-1 pixels by
+        # 127 (30.09.2026), which "worst <= 1" over bytes caught and this still
+        # does.
+        moved = over = worst = 0
+        for i in range(0, len(ga), 4):
+            p, q = ga[i:i + 4], gb[i:i + 4]
+            if p == q:
+                continue
+            moved += 1
+            d_alpha = abs(p[3] - q[3])
+            d_rgb = max(abs(x - y) for x, y in zip(p[:3], q[:3]))
+            allowed = 1 if p[3] == 255 == q[3] else 2 + 128 // max(p[3], 1)
+            worst = max(worst, d_rgb)
+            if d_alpha > 1 or d_rgb > allowed:
+                over += 1
+        claims.check(0 < moved and over == 0,
                      f"text is noised, by one step at most: {moved} pixels moved, "
-                     f"worst {worst}")
+                     f"{over} by more than their coverage allows (largest colour "
+                     f"move {worst})")
         claims.check(a_worker != bare_worker,
                      f"a Worker's OffscreenCanvas is noised too — same "
                      f"BaseRenderingContext2D, no document")

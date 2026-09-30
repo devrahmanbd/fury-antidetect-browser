@@ -379,10 +379,10 @@ index 91dad8914b..08b98dfdec 100644
      WillDraw(gfx::SkIRectToRect(clip_bounds), draw_type);
 diff --git a/third_party/blink/renderer/platform/graphics/fury_flat.h b/third_party/blink/renderer/platform/graphics/fury_flat.h
 new file mode 100644
-index 0000000000..cd3042cc1b
+index 0000000000..dc799e7463
 --- /dev/null
 +++ b/third_party/blink/renderer/platform/graphics/fury_flat.h
-@@ -0,0 +1,154 @@
+@@ -0,0 +1,162 @@
 +// Copyright 2026 The Fury Authors
 +// Use of this source code is governed by a BSD-style license that can be
 +// found in the LICENSE file.
@@ -515,14 +515,22 @@ index 0000000000..cd3042cc1b
 +        continue;
 +      }
 +      if (alpha < 255) {
-+        // Coverage, one step, colour kept inside the new coverage.
++        // Coverage, one step, and the SAME colour at the new coverage: the
++        // premultiplied channels scale with alpha, as they would out of a
++        // rasteriser that covered this pixel a little more or less.
++        //
++        // The first version only clamped RGB to the new alpha, which keeps
++        // the premultiplied numbers and so changes the colour: getImageData
++        // unpremultiplies, and a pixel at alpha 70 moved 2-4 levels off the
++        // fill colour, one at alpha 1 -> 2 moved 127. verify-0030 caught it on
++        // the first macOS 155 build (30.09.2026); no Windows run had executed
++        // that script.
 +        const int next = (h & 2) ? alpha + 1 : alpha - 1;
-+        const uint8_t a2 = static_cast<uint8_t>(next < 1 ? 1 : next > 254 ? 254 : next);
-+        noised[p + 3] = a2;
++        const int a2 = next < 1 ? 1 : next > 254 ? 254 : next;
++        noised[p + 3] = static_cast<uint8_t>(a2);
 +        for (size_t c = 0; c < 3; ++c) {
-+          if (noised[p + c] > a2) {
-+            noised[p + c] = a2;
-+          }
++          const int scaled = (original[p + c] * a2 + alpha / 2) / alpha;
++          noised[p + c] = static_cast<uint8_t>(scaled > a2 ? a2 : scaled);
 +        }
 +      } else if (opaque_blends && none_equal && all_opaque) {
 +        const size_t colour = (h >> 3) % 3;
