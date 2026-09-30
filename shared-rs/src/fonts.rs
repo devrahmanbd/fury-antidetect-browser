@@ -54,10 +54,16 @@ const MAC_ONLY: &[&str] = &[
 
 /// Shipped with Windows and not with macOS, beyond the probed ones. Hidden
 /// from a macOS persona, whatever the host is.
+///
+/// Microsoft Sans Serif is NOT here although the name says Windows: macOS
+/// ships it in /System/Library/Fonts/Supplemental. Hidden, it was the one
+/// family on the list a real Mac has, and iphey said "inconsistent browser
+/// fingerprint (roadmap)" for that alone; taken off, "no signals" (measured
+/// 30.09.2026 on the macOS 155 core, config branches one at a time).
 const WINDOWS_ONLY: &[&str] = &[
     "Segoe UI Symbol", "Segoe UI Historic", "Segoe Print", "Segoe Script",
     "Segoe MDL2 Assets", "Segoe Fluent Icons", "Lucida Console",
-    "Lucida Sans Unicode", "Microsoft Sans Serif", "MS Sans Serif", "MS Serif",
+    "Lucida Sans Unicode", "MS Sans Serif", "MS Serif",
     "MS PGothic", "MS UI Gothic", "Meiryo", "Meiryo UI", "SimSun", "NSimSun",
     "SimHei", "KaiTi", "FangSong", "Microsoft Himalaya", "Microsoft New Tai Lue",
     "Microsoft PhagsPa", "Microsoft Tai Le", "Microsoft Yi Baiti",
@@ -117,7 +123,7 @@ mod tests {
         let present: Vec<String> = ["Helvetica Neue", "Menlo", "Arial"].iter().map(|s| s.to_string()).collect();
         let h = hidden("macOS", &present);
         // Never measured, so never hidden: the M5 regression.
-        for kept in ["Helvetica", "Times", "Courier", "PingFang SC", "Helvetica Neue", "Arial"] {
+        for kept in ["Helvetica", "Times", "Courier", "PingFang SC", "Helvetica Neue", "Arial", "Microsoft Sans Serif"] {
             assert!(!h.iter().any(|x| x == kept), "{kept} hidden on a Mac");
         }
         // Probed and absent, or Windows-only.
