@@ -91,7 +91,7 @@ def launch(config):
     """Start the core on a real page and attach. Same shape as verify-0121."""
     d = tempfile.mkdtemp(prefix="fury-0021-")
     args = [CORE, f"--user-data-dir={d}", "--remote-debugging-port=0",
-            "--no-first-run", "--no-default-browser-check",
+            "--no-first-run", "--no-default-browser-check", "--use-mock-keychain",
             "--window-position=-4000,-4000", "--window-size=600,400"]
     fd = None
     if config is not None:

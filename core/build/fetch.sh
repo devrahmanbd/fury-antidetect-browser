@@ -26,8 +26,13 @@ echo "==> Chromium $CHROMIUM_VERSION into $SRC"
 # by the first person to run fetch.sh on Windows, thirty seconds in.
 #
 # -Pk is POSIX: 1024-byte blocks, portable everywhere, same answer on both.
+#
+# 150 is for a first fetch. Moving an existing tree between milestones needs a
+# fraction of it -- 153 -> 155 on the Windows box fetched a few GB -- so
+# FURY_MIN_FREE_GB lowers the bar for that case (used 29.09.2026 on a laptop
+# with 109 GB free and a 70 GB tree already in place).
 avail_gb=$(df -Pk "$CORE_DIR" | awk 'NR==2 {print int($4/1048576)}')
-if [ "$avail_gb" -lt 150 ]; then
+if [ "$avail_gb" -lt "${FURY_MIN_FREE_GB:-150}" ]; then
   echo "!! Only ${avail_gb} GB free. Syncing needs ~100 GB and building ~200 GB." >&2
   echo "!! Free up space or point CORE_DIR at another volume." >&2
   exit 1

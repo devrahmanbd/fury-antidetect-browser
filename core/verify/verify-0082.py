@@ -56,6 +56,7 @@ def launch(config):
             "--fury-fp-fd=3",
             "--remote-debugging-port=0",
             "--no-first-run",
+            "--use-mock-keychain",  # see harness.py
             "--no-default-browser-check",
             "--disable-field-trial-config",
             "--disable-background-networking",

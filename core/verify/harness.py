@@ -30,6 +30,7 @@ path.
 import json
 import os
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -68,6 +69,14 @@ class Session:
             # nobody asked.
             "--window-position=-4000,-4000",
             "--window-size=900,700",
+            # Keep the machine's keychain out of it. An ad-hoc signed core has
+            # a new code hash after every build, so macOS asks again whether it
+            # may read "Chromium Safe Storage" -- and until someone answers,
+            # the cookie store never finishes loading and no page navigates.
+            # Measured 30.09.2026 on the first 155 build: 13 scripts timed out
+            # on a dialog nobody could see. What 0110 claims is about the key on
+            # descriptor 4, which this flag does not touch.
+            "--use-mock-keychain",
             *extra_args,
         ]
 
@@ -171,7 +180,11 @@ class Session:
             self.ws.close()
         except Exception:
             pass
-        self.proc.terminate()
+        # SIGHUP, as the agent sends (platform-rs/src/process.rs). From 155 a
+        # SIGTERM on macOS takes the session-ending path and exits without
+        # writing the cookie jar, and 0110 then fails for a reason that is
+        # not 0110's.
+        self.proc.send_signal(signal.SIGHUP)
         try:
             self.proc.wait(timeout=12)
         except subprocess.TimeoutExpired:

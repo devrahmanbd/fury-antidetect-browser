@@ -55,7 +55,7 @@ def launch(extra, prefs=None):
             json.dump(prefs, f)
     p = subprocess.Popen(
         [CORE, f"--user-data-dir={d}", "--remote-debugging-port=0",
-         "--no-first-run", "--no-default-browser-check",
+         "--no-first-run", "--no-default-browser-check", "--use-mock-keychain",
          "--window-position=-4000,-4000", "--window-size=600,400"] + extra,
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     pf = os.path.join(d, "DevToolsActivePort")
