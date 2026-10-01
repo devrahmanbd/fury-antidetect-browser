@@ -10,10 +10,14 @@
 
 - следов запущенного браузера: `Singleton*`, `lockfile`, `DevToolsActivePort`. Последний
   до 01.10.2026 уезжал, и агент коллеги отдавал по `cdp: true` мёртвый порт упаковщика;
-- кэшей (`Cache`, `Code Cache`, `GPUCache`, Dawn/Shader, `download_cache` и т.д.) на
-  любой глубине;
+- кэшей (`Cache`, `Code Cache`, `GPUCache`, Dawn/Shader, `download_cache`,
+  `CacheStorage` и т.д.) на любой глубине. `CacheStorage` — кэш сайтов внутри
+  `Service Worker`; сама папка с регистрациями (`Database`) и скриптами (`ScriptCache`)
+  уезжает. У тестера `Service Worker` весил 55,8 МБ, почти всё — `CacheStorage`
+  (01.10.2026); squoosh.app без неё открывается, воркер на месте, кэш пуст;
+- словарей проверки орфографии (`*.bdic`) в корне профиля;
 - того, что качает компонент-апдейтер Chromium, только в корне профиля: `WasmTtsEngine`,
-  `OnDeviceHeadSuggestModel`, `OptimizationHints`, `ZxcvbnData` и ещё полтора десятка.
+  `OnDeviceHeadSuggestModel`, `OptimizationHints`, `ZxcvbnData`, `hyphen-data` и ещё полтора десятка.
   Замер 01.10.2026: профиль 124 МБ на диске давал бандл 25,7 МБ, без компонентов 4,7 МБ.
   Это и была «сотня мегабайт», на медленное закрытие которой жаловался тестер.
 

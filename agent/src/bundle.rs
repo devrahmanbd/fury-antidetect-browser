@@ -213,6 +213,9 @@ const SKIP_COMPONENTS: &[&str] = &[
     "extensions_crx_cache",
     "BrowserMetrics",
     "BrowserMetrics-spare.pma",
+    // 1.7 MB on the tester's profile, 01.10.2026: hyphenation patterns the
+    // component updater fetches per language.
+    "hyphen-data",
 ];
 
 /// Caches. Not account state, and not worth carrying between machines.
@@ -240,6 +243,16 @@ const SKIP_COMPONENTS: &[&str] = &[
 ///   - `Service Worker` is 20-32 KB and holds registrations, not just scripts.
 ///     Dropping it can sign somebody out of a site whose auth lives in a worker,
 ///     which is a bad trade for 30 KB.
+///
+///     That measurement aged. On a profile used for a month the directory is
+///     5.4 MB, of which `CacheStorage` is 5.3 -- the Cache API, where a site's
+///     worker keeps copies of its own pages and assets -- while `Database` (the
+///     registrations) is 52 KB and `ScriptCache` 68 KB. A tester's busiest
+///     profile had 55.8 MB in `Service Worker`, 01.10.2026, the largest thing
+///     left in a 92 MB bundle on a 0.5 MB/s upload. So `CacheStorage` is
+///     skipped and the other two travel: the registrations and scripts are
+///     what this paragraph was protecting, and a worker that finds its cache
+///     empty fetches again, as it does after "clear site data".
 ///   - `Network Action Predictor` is 52-80 KB of typed-URL history. It is
 ///     behaviour, not cache, and behaviour is part of what a profile is for.
 /// Is this directory name one of the caches?
@@ -276,6 +289,10 @@ const SKIP_CACHES: &[&str] = &[
     // and the browser re-fetches.
     "Shared Dictionary",
     "optimization_guide_hint_cache_store",
+    // The Cache API's storage, inside `Service Worker` (see above for why the
+    // directory around it stays). A cache by name and by contract: a site
+    // cannot assume anything it put there is still there.
+    "CacheStorage",
 ];
 
 impl std::fmt::Debug for Sealed {
@@ -393,6 +410,13 @@ fn append_dir<W: Write>(
             continue;
         }
         if dir == root && SKIP_COMPONENTS.iter().any(|s| *s == name) {
+            continue;
+        }
+        // Spell-check dictionaries, one per language the profile checks,
+        // downloaded by the browser into the top of the profile under a
+        // versioned name (de-DE-3-0.bdic, 6.5 MB on the tester's profile). The
+        // name changes with the version, so a suffix and not a list.
+        if dir == root && name.ends_with(".bdic") {
             continue;
         }
         if path.is_dir() {
@@ -606,6 +630,33 @@ mod tests {
             out.join("Default/Extensions/abc/OptimizationHints/data").exists(),
             "a component name deeper down was skipped too"
         );
+    }
+
+    #[test]
+    fn a_workers_cache_stays_but_its_registration_travels() {
+        let d = dir("skip-cachestorage");
+        let sw = d.join("Default/Service Worker");
+        std::fs::create_dir_all(sw.join("Database")).unwrap();
+        std::fs::create_dir_all(sw.join("ScriptCache")).unwrap();
+        std::fs::create_dir_all(sw.join("CacheStorage/4a41/203b")).unwrap();
+        std::fs::write(sw.join("Database/CURRENT"), b"registrations").unwrap();
+        std::fs::write(sw.join("ScriptCache/index"), b"scripts").unwrap();
+        std::fs::write(sw.join("CacheStorage/4a41/203b/blob"), vec![b'c'; 200_000]).unwrap();
+        std::fs::write(d.join("de-DE-3-0.bdic"), b"dictionary").unwrap();
+        std::fs::create_dir_all(d.join("hyphen-data/120.0")).unwrap();
+        std::fs::write(d.join("hyphen-data/120.0/hyph-de.hyb"), b"patterns").unwrap();
+
+        let vault = Vault::for_tests([3u8; 32]);
+        let sealed = pack(&d, &Sealer::Machine(&vault)).unwrap();
+        let out = dir("skip-cachestorage-out");
+        unpack(&sealed.bytes, &sealed.wrapped_key, &Sealer::Machine(&vault), &out).unwrap();
+
+        let sw = out.join("Default/Service Worker");
+        assert!(sw.join("Database/CURRENT").exists(), "a worker registration was dropped");
+        assert!(sw.join("ScriptCache/index").exists(), "a worker script was dropped");
+        assert!(!sw.join("CacheStorage").exists(), "the Cache API's storage travelled");
+        assert!(!out.join("de-DE-3-0.bdic").exists(), "a spell-check dictionary travelled");
+        assert!(!out.join("hyphen-data").exists(), "hyphenation data travelled");
     }
 
     #[test]
