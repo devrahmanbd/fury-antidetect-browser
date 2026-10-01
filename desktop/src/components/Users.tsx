@@ -96,6 +96,11 @@ export function Users({
   // Whose grant is open for editing flag by flag, if anybody's. One at a time:
   // ten checkboxes under every row would turn the table into a form.
   const [editing, setEditing] = useState<string | null>(null);
+  // Somebody being let in, and the folders ticked for them so far.
+  const [admitting, setAdmitting] = useState<{
+    member: Members["members"][number];
+    picked: Set<string>;
+  } | null>(null);
   // The organisation's domain lists, for attaching to a grant in the row.
   const [orgLists, setOrgLists] = useState<OrgDomainList[]>([]);
   useEffect(() => {
@@ -188,6 +193,79 @@ export function Users({
   return (
     <div className="teamPane">
       {dialog}
+      {admitting && (
+        <div
+          className="scrim"
+          onMouseDown={(e) => e.target === e.currentTarget && setAdmitting(null)}
+        >
+          <form
+            className="palette"
+            style={{ maxHeight: "none" }}
+            role="dialog"
+            aria-modal="true"
+            onSubmit={(e) => {
+              e.preventDefault();
+              const { member, picked } = admitting;
+              setAdmitting(null);
+              void run(async () => {
+                await api.handOverKey(member.user_id, member.public_key);
+                // Sequential rather than concurrent: each is audited, and a
+                // half-applied burst leaves an owner reading a failure with no
+                // way to tell which ones landed.
+                for (const p of teamProjects) {
+                  if (picked.has(p.id)) {
+                    await api.grantAccess(p.id, member.user_id, MEMBER_PERMS);
+                  }
+                }
+              });
+            }}
+          >
+            <div style={{ padding: "var(--s-5) var(--s-5) var(--s-3)" }}>
+              <div className="name" style={{ marginBottom: "var(--s-2)" }}>
+                {t("team.letInTitle", { email: admitting.member.email })}
+              </div>
+              <p className="hint" style={{ margin: 0 }}>
+                {t("team.letInPick")}
+              </p>
+              {/* Said, because the ticks below would otherwise look like they
+                  limit somebody they cannot: an owner or admin reaches every
+                  folder by role (rbac.rs, has_implicit_project_access). */}
+              {(admitting.member.role === "admin" || admitting.member.role === "owner") && (
+                <p className="hint" style={{ margin: "var(--s-2) 0 0" }}>
+                  {t("team.letInAdminSeesAll")}
+                </p>
+              )}
+              <div style={{ marginTop: "var(--s-3)", display: "grid", gap: "var(--s-2)" }}>
+                {teamProjects.map((p) => (
+                  <label key={p.id} style={{ display: "flex", gap: "var(--s-2)", alignItems: "center" }}>
+                    <input
+                      type="checkbox"
+                      style={{ width: "auto" }}
+                      checked={admitting.picked.has(p.id)}
+                      onChange={(e) => {
+                        const picked = new Set(admitting.picked);
+                        if (e.target.checked) picked.add(p.id);
+                        else picked.delete(p.id);
+                        setAdmitting({ ...admitting, picked });
+                      }}
+                    />
+                    {p.name}
+                  </label>
+                ))}
+              </div>
+            </div>
+            <div className="modalFoot">
+              <div className="spacer" />
+              <button type="button" className="ghost" onClick={() => setAdmitting(null)}>
+                {t("ui.cancel")}
+              </button>
+              <button type="submit" className="primary" autoFocus>
+                {admitting.picked.size > 0 ? t("team.letIn") : t("team.giveKey")}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
       {error && <p className="error">{error}</p>}
 
       {/* The sequence, stated.
@@ -256,20 +334,16 @@ export function Users({
                     <button
                       disabled={busy}
                       onClick={() =>
-                        run(async () => {
-                          await api.handOverKey(m.user_id, m.public_key);
-                          // Every folder the team has, not just the one the
-                          // picker happens to show. Access to one project out
-                          // of six, chosen by whatever was selected above, is
-                          // not what "let them in" means.
-                          //
-                          // Sequential rather than concurrent: each is audited,
-                          // and a half-applied burst leaves an owner reading a
-                          // failure with no way to tell which ones landed.
-                          for (const p of teamProjects) {
-                            await api.grantAccess(p.id, m.user_id, MEMBER_PERMS);
-                          }
-                        })
+                        // Which folders is asked, not assumed. This used to
+                        // open every folder the team had, on the reasoning
+                        // that a colleague who can reach none is nobody's
+                        // intention -- and a tester who invited somebody to
+                        // work on one client found them looking at all of
+                        // them, 01.10.2026. Separating projects is the reason
+                        // a team has more than one.
+                        teamProjects.length > 0
+                          ? setAdmitting({ member: m, picked: new Set() })
+                          : run(() => api.handOverKey(m.user_id, m.public_key))
                       }
                     >
                       {teamProjects.length > 0 ? t("team.letIn") : t("team.giveKey")}
