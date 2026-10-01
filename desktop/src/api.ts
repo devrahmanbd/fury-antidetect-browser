@@ -757,6 +757,9 @@ export const api = {
   invite: (email: string, role: string): Promise<{ code: string; expires_in_hours: number }> =>
     cmd("invite", { email, role }),
 
+  setMemberRole: (userId: string, role: string): Promise<{ role: string; changed: boolean }> =>
+    cmd("set_member_role", { userId, role }),
+
   /** Seal the organisation key to a member's public key. Happens in Rust; the
    *  key itself never reaches this side. */
   handOverKey: (userId: string, publicKey: string): Promise<unknown> =>

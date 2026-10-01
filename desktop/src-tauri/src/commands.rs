@@ -1696,6 +1696,35 @@ pub async fn invite(
         .await
 }
 
+/// Change a member's role: admin, manager or member.
+///
+/// A server older than 0.2.13 has no such route and answers a bare 404, with
+/// no JSON body -- which the window would otherwise show as "not found, or you
+/// no longer have access", about a colleague sitting right there in the list.
+/// The tester's team runs its own server, so this is the likely case for him.
+#[tauri::command]
+pub async fn set_member_role(
+    state: State<'_, AppState>,
+    user_id: String,
+    role: String,
+) -> R<serde_json::Value> {
+    let out = state
+        .call(
+            reqwest::Method::POST,
+            &format!("/v1/org/members/{user_id}/role"),
+            Body::Json(serde_json::json!({ "role": role })),
+            true,
+        )
+        .await;
+    match out {
+        Err(e) if e.status == 404 && e.body.is_null() => Err(ApiErr::coded(
+            "err.roleNeedsNewerServer",
+            "This team server is older than 0.2.13 and cannot change roles. Update it (git pull, then deploy/push.sh).",
+        )),
+        other => other,
+    }
+}
+
 /// Let a member in.
 ///
 /// The half that cannot happen on the server: their copy of the organisation

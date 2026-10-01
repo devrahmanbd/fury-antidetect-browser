@@ -129,6 +129,7 @@ fn main() {
             commands::audit,
             commands::org_members,
             commands::invite,
+            commands::set_member_role,
             commands::hand_over_key,
             commands::grants,
             commands::grant_access,

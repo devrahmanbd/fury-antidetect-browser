@@ -187,6 +187,7 @@ export function Users({
     return <p className="empty pad">{error ?? t("team.loading")}</p>;
   }
 
+  const myRole = team.members.find((m) => m.is_you)?.role;
   const granted = new Set(grants?.granted.map((g) => g.user_id) ?? []);
   const implicit = new Set(grants?.implicit.map((g) => g.user_id) ?? []);
 
@@ -299,7 +300,40 @@ export function Users({
                 <div className="name">{m.email}</div>
                 {m.is_you && <div className="muted small">{t("team.you")}</div>}
               </td>
-              <td className="muted">{t(roleKey(m.role))}</td>
+              <td className="muted">
+                {/* A select only where the server would accept the change
+                    (api.rs, set_member_role): never the owner, never yourself,
+                    and an admin handles managers and members only. Anywhere
+                    else it is text, rather than a control that always fails. */}
+                {canChangeRole(myRole, m) ? (
+                  <select
+                    style={{ width: "auto" }}
+                    value={m.role}
+                    disabled={busy}
+                    aria-label={t("team.role")}
+                    onChange={async (e) => {
+                      const to = e.target.value;
+                      if (to === "admin") {
+                        const go = await ask({
+                          title: t("team.makeAdmin", { email: m.email }),
+                          detail: t("team.makeAdminDetail"),
+                          confirmLabel: t("team.makeAdminConfirm"),
+                        });
+                        if (go === null) return;
+                      }
+                      await run(() => withStepUp(ask, t, () => api.setMemberRole(m.user_id, to)));
+                    }}
+                  >
+                    {(myRole === "owner" ? ROLES : ROLES.filter((r) => r !== "admin")).map((r) => (
+                      <option key={r} value={r}>
+                        {t(roleKey(r))}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  t(roleKey(m.role))
+                )}
+              </td>
               <td>
                 {m.has_key ? (
                   <span className="state free">{t("team.hasKey")}</span>
@@ -645,6 +679,14 @@ export function Users({
 
 /** Roles arrive from the server as free text; a key built from one would render
  *  as the key rather than fail. */
+/** Whether the server would let `me` change `m`'s role. Mirrors
+ *  set_member_role in server/src/api.rs; the server decides regardless. */
+function canChangeRole(me: string | undefined, m: { role: string; is_you: boolean }): boolean {
+  if (m.is_you || m.role === "owner") return false;
+  if (me === "owner") return true;
+  return me === "admin" && m.role !== "admin";
+}
+
 function roleKey(role: string): "role.owner" | "role.admin" | "role.manager" | "role.member" {
   switch (role) {
     case "owner":

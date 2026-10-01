@@ -757,8 +757,12 @@ const en = {
   "team.letInHint":
     "“Let them in” hands over the key and asks which folders to open. Nothing is ticked to begin with: the key alone lets a colleague decrypt, not reach anything. Open more later with “Grant access” on their row, and close any of it with “Revoke”.",
   "team.letInTitle": "Let {email} in",
+  "team.makeAdmin": "Make {email} an admin?",
+  "team.makeAdminDetail": "An admin sees every folder of the team, whatever access their row shows, and can invite people and let them in. Change it back here at any time.",
+  "team.makeAdminConfirm": "Make admin",
+  "err.roleNeedsNewerServer": "This team server is older than 0.2.13 and cannot change roles. Whoever runs it updates it: git pull, then deploy/push.sh (docs/14).",
   "team.letInPick": "Which folders should they see? Only the ticked ones; the rest stay invisible to them. Nothing ticked hands over the key alone.",
-  "team.letInAdminSeesAll": "This person was invited as an admin, and an admin sees every folder whatever is ticked. There is no way to change a role yet: to limit access, remove them from the team and invite them again as a member.",
+  "team.letInAdminSeesAll": "This person is an admin, and an admin sees every folder whatever is ticked. To limit access, change their role to member in their row first.",
   "auth.recheck": "Check again",
   "auth.rechecking": "Checking…",
   "auth.stillWaiting":
@@ -1643,8 +1647,12 @@ const ru: Record<Key, string> = {
   "team.letInHint":
     "«Впустить» выдаёт ключ и спрашивает, какие папки открыть. Сначала не отмечено ничего: один ключ позволяет расшифровывать, но не открывает ни одной папки. Открыть ещё можно кнопкой «Выдать доступ» в строке коллеги, закрыть — «Отозвать».",
   "team.letInTitle": "Впустить {email}",
+  "team.makeAdmin": "Сделать {email} администратором?",
+  "team.makeAdminDetail": "Администратор видит все папки команды, что бы ни было указано в его строке, и может приглашать и впускать людей. Вернуть обратно можно здесь же в любой момент.",
+  "team.makeAdminConfirm": "Сделать администратором",
+  "err.roleNeedsNewerServer": "Командный сервер старше 0.2.13 и не умеет менять роли. Его нужно обновить тому, кто его держит: git pull, затем deploy/push.sh (docs/14).",
   "team.letInPick": "Какие папки открыть? Видны будут только отмеченные. Если не отметить ничего, выдаётся только ключ.",
-  "team.letInAdminSeesAll": "Этого человека пригласили администратором, а администратор видит все папки, что бы ни было отмечено. Сменить роль пока нельзя: чтобы ограничить доступ, удалите его из команды и пригласите заново с ролью «участник».",
+  "team.letInAdminSeesAll": "У этого человека роль администратора, а администратор видит все папки, что бы ни было отмечено. Чтобы ограничить доступ, сначала смените роль в его строке на «участник».",
   "auth.recheck": "Проверить снова",
   "auth.rechecking": "Проверяю…",
   "auth.stillWaiting":

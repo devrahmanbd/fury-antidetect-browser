@@ -107,6 +107,7 @@ pub fn routes() -> Router<Arc<AppState>> {
         .route("/v1/org/members", get(list_members))
         .route("/v1/org/invitations", post(create_invitation))
         .route("/v1/org/members/{user_id}/key", post(hand_over_key))
+        .route("/v1/org/members/{user_id}/role", post(set_member_role))
         .route("/v1/org/rotation", get(rotation_material).post(rotate_org_key))
         .route(
             "/v1/profiles/{profile_id}/credentials",
@@ -2884,6 +2885,98 @@ async fn hand_over_key(
 
     audit(db.as_mut(), &caller, "member.key", None, json!({ "target": user_id })).await?;
     Ok(Json(json!({ "ok": true })))
+}
+
+#[derive(Deserialize)]
+pub struct RoleRequest {
+    role: String,
+}
+
+/// Change what a member is: admin, manager or member.
+///
+/// There was no way to do this at all, so somebody invited as an admin by
+/// mistake could only be removed -- a key rotation for the whole team -- and
+/// invited again. A tester met it on 01.10.2026: a colleague invited to one
+/// project saw every project, and being an admin was one of the two reasons.
+///
+/// The same lines as an invitation, for the same reasons: one owner, whose
+/// role this does not touch; an admin cannot make another admin, and cannot
+/// change one either, or two admin accounts could take turns demoting each
+/// other and removing the first would no longer remove the access. Nobody
+/// changes their own role. Promoting to admin opens every project in the
+/// organisation, so it asks for a fresh code when the organisation asks for
+/// one on sensitive actions.
+///
+/// Grants are left as they are. A demoted admin reaches what they were
+/// explicitly granted, which is usually nothing; role_ceiling caps the rest.
+async fn set_member_role(
+    mut db: auth::Db,
+    headers: HeaderMap,
+    Path(user_id): Path<Uuid>,
+    Json(req): Json<RoleRequest>,
+) -> ApiResult<Json<serde_json::Value>> {
+    let caller = db.caller;
+
+    use fury_shared::rbac::OrgRole;
+    if !matches!(caller.role, OrgRole::Owner | OrgRole::Admin) {
+        return Err(ApiError::Denied(Perm::ManageAccess));
+    }
+    let role = auth::parse_role(&req.role)
+        .ok_or_else(|| ApiError::BadRequest("unknown role".into()))?;
+    if matches!(role, OrgRole::Owner) {
+        return Err(ApiError::BadRequest(
+            "an organisation has one owner. Make them an admin for the same reach".into(),
+        ));
+    }
+    if user_id == caller.user_id {
+        return Err(ApiError::BadRequest(
+            "your own role is changed by the owner, not by you".into(),
+        ));
+    }
+
+    // Scoped to the caller's organisation: a user id from another team is
+    // somebody this caller cannot see, and answers like one.
+    let current: Option<(String,)> = sqlx::query_as(
+        "SELECT role::text FROM org_members WHERE org_id = $1 AND user_id = $2",
+    )
+    .bind(caller.org_id)
+    .bind(user_id)
+    .fetch_optional(db.as_mut())
+    .await?;
+    let (current,) = current.ok_or(ApiError::NotFound)?;
+    let from = auth::parse_role(&current).ok_or(ApiError::NotFound)?;
+
+    if matches!(from, OrgRole::Owner) {
+        return Err(ApiError::BadRequest("the owner's role cannot be changed".into()));
+    }
+    if matches!(caller.role, OrgRole::Admin)
+        && (matches!(role, OrgRole::Admin) || matches!(from, OrgRole::Admin))
+    {
+        return Err(ApiError::Denied(Perm::ManageAccess));
+    }
+    if from == role {
+        return Ok(Json(json!({ "role": req.role, "changed": false })));
+    }
+    if matches!(role, OrgRole::Admin) {
+        crate::security::require_step_up(db.as_mut(), &caller, &headers).await?;
+    }
+
+    sqlx::query("UPDATE org_members SET role = $1::org_role WHERE org_id = $2 AND user_id = $3")
+        .bind(&req.role)
+        .bind(caller.org_id)
+        .bind(user_id)
+        .execute(db.as_mut())
+        .await?;
+
+    audit(
+        db.as_mut(),
+        &caller,
+        "member.role",
+        None,
+        json!({ "target": user_id, "from": current, "to": req.role }),
+    )
+    .await?;
+    Ok(Json(json!({ "role": req.role, "changed": true })))
 }
 
 /// Everything a client needs to compute a new organisation key.
