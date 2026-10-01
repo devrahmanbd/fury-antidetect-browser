@@ -158,7 +158,62 @@ pub struct Sealed {
 /// Lock files and sockets describe a running browser on one machine; restoring
 /// them elsewhere produces a profile Chromium refuses to open, and the report
 /// is always "the profile is corrupt" rather than "there is a stale lock".
-const SKIP: &[&str] = &["SingletonLock", "SingletonSocket", "SingletonCookie", "lockfile"];
+///
+/// `DevToolsActivePort` is the same kind of thing: the port of a browser that
+/// ran on the machine that packed the bundle. Carried along, it was unpacked
+/// over the one `launch` had just removed, and a colleague's agent answered
+/// `cdp: true` with the packer's dead port. Found by tools/team-e2e,
+/// 01.10.2026: every launch after the first handed out an address nothing
+/// listened on.
+const SKIP: &[&str] = &[
+    "SingletonLock",
+    "SingletonSocket",
+    "SingletonCookie",
+    "lockfile",
+    "DevToolsActivePort",
+];
+
+/// What Chromium's component updater downloads into the top of a profile.
+///
+/// Not account state: the browser fetches each of these itself, on whichever
+/// machine it runs, and a profile without them works and fetches them again.
+/// They were the bulk of every team bundle. Measured 01.10.2026 on a profile of
+/// this machine, 124 MB on disk: `WasmTtsEngine` 44.6 MB (two versions of 22,
+/// the old one never removed), `OnDeviceHeadSuggestModel` 10.7, and the rest
+/// below together about 6. Packed as the agent packs it, that profile came to
+/// 25.7 MB; without these, 5.4 MB. A tester whose profile "weighs about
+/// 100 MB" reported closing a team profile as slow, 01.10.2026, and this is
+/// most of what was moving.
+///
+/// Skipped at the top of the profile only. A name here is a component's
+/// directory, and the same word deeper down -- inside an extension, say --
+/// would be somebody else's data.
+///
+/// `BrowserMetrics-spare.pma` is a file, not a component: a 4 MB preallocated
+/// metrics buffer the browser recreates on start.
+const SKIP_COMPONENTS: &[&str] = &[
+    "WasmTtsEngine",
+    "OnDeviceHeadSuggestModel",
+    "ActorSafetyLists",
+    "AmountExtractionHeuristicRegexes",
+    "CaptchaProviders",
+    "Crowd Deny",
+    "FileTypePolicies",
+    "FirstPartySetsPreloaded",
+    "MEIPreload",
+    "OptimizationHints",
+    "OriginTrials",
+    "PKIMetadata",
+    "PrivacySandboxAttestationsPreloaded",
+    "SSLErrorAssistant",
+    "SafetyTips",
+    "TrustTokenKeyCommitments",
+    "ZxcvbnData",
+    "GPUPersistentCache",
+    "extensions_crx_cache",
+    "BrowserMetrics",
+    "BrowserMetrics-spare.pma",
+];
 
 /// Caches. Not account state, and not worth carrying between machines.
 ///
@@ -335,6 +390,9 @@ fn append_dir<W: Write>(
         let name = entry.file_name();
         let name = name.to_string_lossy();
         if SKIP.iter().any(|s| *s == name) || SKIP_CACHES.iter().any(|s| *s == name) {
+            continue;
+        }
+        if dir == root && SKIP_COMPONENTS.iter().any(|s| *s == name) {
             continue;
         }
         if path.is_dir() {
@@ -522,6 +580,31 @@ mod tests {
             sealed.bytes.len() < 50_000,
             "the bundle is {} bytes — the caches are still in it",
             sealed.bytes.len()
+        );
+    }
+
+    #[test]
+    fn components_and_the_devtools_port_stay_on_this_machine() {
+        let d = dir("skip-components");
+        std::fs::create_dir_all(d.join("WasmTtsEngine/20260820.1")).unwrap();
+        std::fs::write(d.join("WasmTtsEngine/20260820.1/voice.wasm"), b"component").unwrap();
+        std::fs::write(d.join("DevToolsActivePort"), b"53508\n/devtools/browser/x").unwrap();
+        // The same word below the top is somebody else's directory, and goes.
+        std::fs::create_dir_all(d.join("Default/Extensions/abc/OptimizationHints")).unwrap();
+        std::fs::write(d.join("Default/Extensions/abc/OptimizationHints/data"), b"theirs").unwrap();
+        std::fs::write(d.join("Default/Bookmarks"), b"{}").unwrap();
+
+        let vault = Vault::for_tests([3u8; 32]);
+        let sealed = pack(&d, &Sealer::Machine(&vault)).unwrap();
+        let out = dir("skip-components-out");
+        unpack(&sealed.bytes, &sealed.wrapped_key, &Sealer::Machine(&vault), &out).unwrap();
+
+        assert!(out.join("Default/Bookmarks").exists(), "the bookmarks did not travel");
+        assert!(!out.join("WasmTtsEngine").exists(), "a component travelled");
+        assert!(!out.join("DevToolsActivePort").exists(), "the packer's DevTools port travelled");
+        assert!(
+            out.join("Default/Extensions/abc/OptimizationHints/data").exists(),
+            "a component name deeper down was skipped too"
         );
     }
 

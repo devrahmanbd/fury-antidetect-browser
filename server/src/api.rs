@@ -3918,6 +3918,7 @@ async fn upload_bundle(
 async fn download_bundle(
     mut db: auth::Db,
     Path(profile_id): Path<Uuid>,
+    request_headers: axum::http::HeaderMap,
 ) -> Result<axum::response::Response, ApiError> {
     // Copied out so that reading it does not borrow the connection: a
     // handler needs both in the same expression constantly.
@@ -3940,6 +3941,25 @@ async fn download_bundle(
     .await?;
 
     let (version, key, wrapped) = row.ok_or(ApiError::NotFound)?;
+
+    use axum::response::IntoResponse;
+    // The agent says which version it already holds, and a machine that
+    // uploaded a minute ago holds this one. Sending it back meant a team
+    // profile came down whole at every launch -- tens of megabytes on a
+    // tester's profile, 01.10.2026. Written the way the agent writes it
+    // (sync.rs, bundle_etag).
+    let etag = format!("\"v{version}\"");
+    let held = request_headers
+        .get(axum::http::header::IF_NONE_MATCH)
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|v| v.split(',').any(|t| t.trim() == etag));
+    if held {
+        let mut response = axum::http::StatusCode::NOT_MODIFIED.into_response();
+        response.headers_mut().insert("x-fury-version", version.to_string().parse().unwrap());
+        response.headers_mut().insert(axum::http::header::ETAG, etag.parse().unwrap());
+        return Ok(response);
+    }
+
     let path = bundle_root().join(&key);
     // The row and the bytes are in different places, so they can disagree: a
     // restore that brought back the database but not the disk, or a server
@@ -3955,10 +3975,10 @@ async fn download_bundle(
         ))
     })?;
 
-    use axum::response::IntoResponse;
     let mut response = bytes.into_response();
     let headers = response.headers_mut();
     headers.insert("x-fury-version", version.to_string().parse().unwrap());
+    headers.insert(axum::http::header::ETAG, etag.parse().unwrap());
     headers.insert(
         "x-fury-wrapped-key",
         String::from_utf8_lossy(&wrapped).parse().unwrap(),

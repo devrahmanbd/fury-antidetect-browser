@@ -2402,10 +2402,30 @@ impl Agent {
             // in 0.1 s, and the log could not say whether the time went on the
             // wire or on writing the profile to disk. Now it says.
             let fetch_started = std::time::Instant::now();
-            let fetched = srv.fetch_bundle(&profile.id).await?;
+            let held = crate::unsynced::held(&profile.id);
+            let fetched = srv.fetch_bundle(&profile.id, held).await?;
             let fetch_ms = fetch_started.elapsed().as_millis() as u64;
+            use crate::sync::Fetched;
             match fetched {
-                Some((bytes, wrapped, version)) => {
+                // The copy here is the server's current one, so there is
+                // nothing to download and nothing to unpack. A server older
+                // than the If-None-Match answer sends the bundle anyway, and
+                // the version says the same thing; that saves the unpack.
+                Fetched::Unchanged(version) => {
+                    tracing::info!(profile = %profile.name, version, fetch_ms, "this machine already holds the server's version");
+                    pulled_version = version;
+                }
+                Fetched::Bundle { version, bytes, .. } if held == Some(version) => {
+                    tracing::info!(
+                        profile = %profile.name,
+                        version,
+                        bytes = bytes.len(),
+                        fetch_ms,
+                        "this machine already holds the server's version; downloaded anyway, because this server does not answer If-None-Match yet"
+                    );
+                    pulled_version = version;
+                }
+                Fetched::Bundle { bytes, wrapped, version } => {
                     let size = bytes.len();
                     // Not over a session this machine never managed to upload.
                     // See unsynced.rs.
@@ -2430,6 +2450,7 @@ impl Agent {
                             }
                             let unpack_started = std::time::Instant::now();
                             let files = crate::bundle::unpack(&bytes, &wrapped, &sealer, &dir)?;
+                            crate::unsynced::record_held(&profile.id, version);
                             tracing::info!(
                                 profile = %profile.name,
                                 version,
@@ -2446,8 +2467,12 @@ impl Agent {
                 // A profile shared before it was ever opened has a row and no
                 // bytes. Starting empty is correct; refusing would make the
                 // first launch of every shared profile fail.
-                None => tracing::info!(profile = %profile.name, fetch_ms, "no bundle on the server yet"),
+                Fetched::Nothing => tracing::info!(profile = %profile.name, fetch_ms, "no bundle on the server yet"),
             }
+            // Bundles packed before 0.2.11 carry the packer's DevToolsActivePort
+            // (bundle.rs, SKIP), and unpacking one put it back after the removal
+            // above. Removed again for those.
+            let _ = std::fs::remove_file(dir.join("DevToolsActivePort"));
         }
 
         // Start URLs open on the FIRST launch and never again.
@@ -2594,13 +2619,30 @@ impl Agent {
         // `ask_to_close` is a SIGHUP on macOS and a WM_CLOSE on Windows; see
         // fury_platform::process for why it is a function both platforms have
         // to implement rather than a `#[cfg(unix)]` one of them can skip.
-        fury_platform::ask_to_close(&entry.child);
+        let asked = fury_platform::ask_to_close(&entry.child);
+        let close_started = std::time::Instant::now();
         // Bounded: a browser that will not close must not hold the UI.
+        let mut exited = false;
         for _ in 0..50 {
             if entry.child.try_wait()?.is_some() {
+                exited = true;
                 break;
             }
             tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        }
+        // Said either way. A kill loses whatever the browser had not written
+        // yet, and "closing took ten seconds and the cookies were gone" is a
+        // report that needs this line to be explained rather than guessed at.
+        let close_ms = close_started.elapsed().as_millis() as u64;
+        if exited {
+            tracing::info!(profile = %profile_id, asked, close_ms, "browser closed");
+        } else {
+            tracing::warn!(
+                profile = %profile_id,
+                asked,
+                close_ms,
+                "the browser did not close when asked and was killed; what it had not written yet is lost"
+            );
         }
         let _ = entry.child.kill();
         let _ = entry.child.wait();
@@ -2631,17 +2673,44 @@ impl Agent {
                 },
                 None => crate::bundle::Sealer::Machine(self.store.vault()),
             };
+            // Timed and sized, both halves, as the pull is. A tester called
+            // closing a team profile slow, 01.10.2026, and the log had nothing
+            // to say about it: the pull was measured, the push never was.
+            let pack_started = std::time::Instant::now();
             let pushed_result = match crate::bundle::pack(&paths::profile_dir(profile_id), &sealer) {
                 Ok(sealed) => {
-                    srv.push_bundle(
-                        profile_id,
-                        &sealed.bytes,
-                        &sealed.wrapped_key,
-                        &sealed.sha256,
-                        base,
-                        &token,
-                    )
-                    .await
+                    let pack_ms = pack_started.elapsed().as_millis() as u64;
+                    let push_started = std::time::Instant::now();
+                    let result = srv
+                        .push_bundle(
+                            profile_id,
+                            &sealed.bytes,
+                            &sealed.wrapped_key,
+                            &sealed.sha256,
+                            base,
+                            &token,
+                        )
+                        .await;
+                    let push_ms = push_started.elapsed().as_millis() as u64;
+                    match &result {
+                        Ok(version) => tracing::info!(
+                            profile = %profile_id,
+                            version,
+                            bytes = sealed.bytes.len(),
+                            pack_ms,
+                            push_ms,
+                            "pushed bundle"
+                        ),
+                        Err(e) => tracing::warn!(
+                            profile = %profile_id,
+                            bytes = sealed.bytes.len(),
+                            pack_ms,
+                            push_ms,
+                            error = format!("{e:#}"),
+                            "push failed"
+                        ),
+                    }
+                    result
                 }
                 Err(e) => Err(e),
             };
@@ -2654,7 +2723,10 @@ impl Agent {
             // machine is left holding work the server lacks, gone once they
             // agree. See unsynced.rs.
             match &pushed_result {
-                Ok(_) => crate::unsynced::clear(profile_id),
+                Ok(version) => {
+                    crate::unsynced::clear(profile_id);
+                    crate::unsynced::record_held(profile_id, *version);
+                }
                 Err(_) => crate::unsynced::mark(profile_id, base),
             }
 

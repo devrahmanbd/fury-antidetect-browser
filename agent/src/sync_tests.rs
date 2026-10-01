@@ -84,11 +84,13 @@ impl Env {
     /// The version the server holds now, so an upload can name its base.
     async fn current_version(&self) -> i32 {
         self.server
-            .fetch_bundle(&self.profile)
+            .fetch_bundle(&self.profile, None)
             .await
             .ok()
-            .flatten()
-            .map(|(_, _, v)| v)
+            .and_then(|f| match f {
+                crate::sync::Fetched::Bundle { version, .. } => Some(version),
+                _ => None,
+            })
             .unwrap_or(0)
     }
 }
@@ -172,11 +174,16 @@ async fn round_trip(env: &Env, lock: &str) -> anyhow::Result<()> {
     }
 
     // --- and back again ----------------------------------------------------
-    let (fetched, wrapped, got) = env
-        .server
-        .fetch_bundle(&env.profile)
-        .await?
-        .ok_or_else(|| anyhow::anyhow!("the server had no bundle after accepting one"))?;
+    let crate::sync::Fetched::Bundle { bytes: fetched, wrapped, version: got } =
+        env.server.fetch_bundle(&env.profile, None).await?
+    else {
+        anyhow::bail!("the server had no bundle after accepting one");
+    };
+    // Asked again as the machine that now holds it: nothing comes back.
+    anyhow::ensure!(
+        matches!(env.server.fetch_bundle(&env.profile, Some(got)).await?, crate::sync::Fetched::Unchanged(v) if v == got),
+        "the server sent version {got} again to a machine that said it had it"
+    );
     anyhow::ensure!(got == version, "fetched version {got}, uploaded {version}");
 
     let restored = crate::tmp::TempDir::new("fury-sync-e2e-restore");

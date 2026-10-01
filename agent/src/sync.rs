@@ -49,6 +49,27 @@ fn refused_by(res: &reqwest::Response) -> &'static str {
     }
 }
 
+/// What asking for a profile's bundle came back with.
+pub enum Fetched {
+    /// The profile has never been uploaded -- shared before anyone opened it.
+    Nothing,
+    /// The server still holds the version this machine already has.
+    Unchanged(i32),
+    Bundle {
+        bytes: Vec<u8>,
+        wrapped: String,
+        version: i32,
+    },
+}
+
+/// The validator a bundle version travels under. Written the same way by the
+/// server (api.rs, download_bundle); nothing checks the two against each
+/// other, and a drift costs only the saving, never correctness: a mismatch is
+/// a full download.
+pub fn bundle_etag(version: i32) -> String {
+    format!("\"v{version}\"")
+}
+
 /// A server the agent may talk to for the duration of one launch.
 #[derive(Clone, Debug, serde::Deserialize)]
 pub struct Server {
@@ -70,23 +91,31 @@ impl Server {
             .build()?)
     }
 
-    /// Fetch the current bundle, if the server has one.
+    /// Fetch the current bundle, unless this machine already holds it.
     ///
-    /// `Ok(None)` for a profile that has never been uploaded — a new profile
-    /// shared with a colleague has a row and no bytes, and that is not an error.
-    pub async fn fetch_bundle(
-        &self,
-        profile_id: &str,
-    ) -> anyhow::Result<Option<(Vec<u8>, String, i32)>> {
-        let res = Self::client()?
+    /// `have` is the version the profile directory here was last pulled at or
+    /// pushed as. Sent as `If-None-Match`, and a server that still holds that
+    /// version answers 304 with no body. A team profile used to come down
+    /// whole on every launch, on the machine that had uploaded it a minute
+    /// before -- a tester's profile is tens of megabytes, both ways, every time
+    /// (01.10.2026). A server older than this ignores the header and sends the
+    /// bundle, which the caller then recognises by its version.
+    pub async fn fetch_bundle(&self, profile_id: &str, have: Option<i32>) -> anyhow::Result<Fetched> {
+        let mut req = Self::client()?
             .get(format!("{}/v1/profiles/{profile_id}/bundle", self.url))
-            .bearer_auth(&self.token)
-            .send()
-            .await
-            .context(TRANSFER_HINT)?;
+            .bearer_auth(&self.token);
+        if let Some(v) = have {
+            req = req.header(reqwest::header::IF_NONE_MATCH, bundle_etag(v));
+        }
+        let res = req.send().await.context(TRANSFER_HINT)?;
 
         if res.status() == reqwest::StatusCode::NOT_FOUND {
-            return Ok(None);
+            return Ok(Fetched::Nothing);
+        }
+        if res.status() == reqwest::StatusCode::NOT_MODIFIED {
+            if let Some(v) = have {
+                return Ok(Fetched::Unchanged(v));
+            }
         }
         if !res.status().is_success() {
             anyhow::bail!("the server refused the bundle ({}){}", res.status(), refused_by(&res));
@@ -97,7 +126,8 @@ impl Server {
         let version: i32 = header(&res, "x-fury-version")
             .and_then(|v| v.parse().ok())
             .unwrap_or(0);
-        Ok(Some((res.bytes().await.context(TRANSFER_HINT)?.to_vec(), wrapped, version)))
+        let bytes = res.bytes().await.context(TRANSFER_HINT)?.to_vec();
+        Ok(Fetched::Bundle { bytes, wrapped, version })
     }
 
     /// Push a new version, refusing to clobber someone else's.

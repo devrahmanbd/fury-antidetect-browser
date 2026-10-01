@@ -73,7 +73,39 @@ pub fn set_aside(profile_id: &str) -> anyhow::Result<PathBuf> {
     let aside = dir.with_extension(format!("unsent-{}", time::OffsetDateTime::now_utc().unix_timestamp()));
     std::fs::rename(&dir, &aside)?;
     clear(profile_id);
+    let _ = std::fs::remove_file(held_path(profile_id));
     Ok(aside)
+}
+
+// The other half of the same question: which server version the local copy IS,
+// when it is one. Written after a pull has been unpacked and after a push has
+// been accepted, and asked for at the next launch so that a profile this
+// machine already holds is not downloaded and unpacked over itself.
+//
+// A session that never reached the server leaves this at the version it grew
+// from, beside the marker above, and that is the right answer for it: the
+// server at that version means "keep the local copy", which is what `decide`
+// says too. A local copy newer than the record -- the agent killed with a
+// browser open, nothing pushed and nothing marked -- is kept rather than
+// overwritten with the older bundle it grew from, which is what used to happen.
+
+fn held_path(profile_id: &str) -> PathBuf {
+    crate::paths::profile_dir(profile_id).with_extension("version")
+}
+
+/// The server version this machine's copy of the profile is, if it has one.
+pub fn held(profile_id: &str) -> Option<i32> {
+    if !crate::paths::profile_dir(profile_id).is_dir() {
+        return None;
+    }
+    std::fs::read_to_string(held_path(profile_id)).ok()?.trim().parse().ok()
+}
+
+/// The local copy and server version `version` are the same profile.
+pub fn record_held(profile_id: &str, version: i32) {
+    if let Err(e) = std::fs::write(held_path(profile_id), version.to_string()) {
+        tracing::warn!(profile = %profile_id, error = %e, "could not record which version is here");
+    }
 }
 
 /// What a launch does with the server's bundle.
