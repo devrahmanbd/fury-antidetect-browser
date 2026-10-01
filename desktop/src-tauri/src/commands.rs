@@ -1591,6 +1591,35 @@ pub async fn stop(
         return Ok(serde_json::json!({ "stopped": false }));
     };
 
+    // The browser closes first, and the agent's stop is what closes it: it
+    // packs the profile, uploads it under this lock, and only then gives the
+    // lock back. This button used to do the last step alone. The browser
+    // stayed open, and when the person closed it the upload was refused as
+    // "not locked by you", so the session stayed on this machine and a
+    // colleague opened the version before it. A tester reported it as
+    // bookmarks not being saved in team mode, 01.10.2026; tools/team-e2e
+    // reproduced it the same way.
+    match crate::agent::call::<serde_json::Value>(
+        "profile.stop",
+        serde_json::json!({ "id": profile_id }),
+    )
+    .await
+    {
+        Ok(out) if out.get("stopped").and_then(|v| v.as_bool()) == Some(true) => {
+            state.locks.lock().unwrap().remove(&profile_id);
+            return Ok(out);
+        }
+        // Not running under this agent -- it was restarted, or the browser
+        // is already gone. The lock is still this machine's to return.
+        Ok(_) | Err(crate::agent::AgentError::NotRunning) => {}
+        // The agent's own failure, an upload refused or broken off, says
+        // where the work is. It released the lock itself either way.
+        Err(e) => {
+            state.locks.lock().unwrap().remove(&profile_id);
+            return Err(e.into());
+        }
+    }
+
     let _: serde_json::Value = state
         .call(
             reqwest::Method::POST,

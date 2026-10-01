@@ -147,6 +147,11 @@ use fury_platform::dirs::{data_dir, short_tag};
 fn answer_within(method: &str) -> Duration {
     match method {
         "profile.launch" => Duration::from_secs(360),
+        // Stopping a team profile uploads it, under the same five-minute bound
+        // the agent gives the download. Thirty seconds answered "the agent
+        // did not answer" for a large profile on a slow link while the upload
+        // went on.
+        "profile.stop" => Duration::from_secs(360),
         _ => Duration::from_secs(30),
     }
 }
