@@ -62,6 +62,115 @@ systemctl reload ssh
 
 Обновить сервер потом — та же команда.
 
+### Если на машине уже есть другие сайты — Docker вместо push.sh
+
+`push.sh` рассчитан на пустую машину: он ставит Caddy на порты 80 и 443, свой
+Postgres и включает ufw. На сервере, где уже работают сайты через nginx и общий
+Postgres, он сломает соседей. Так было у тестера 01.10.2026, и его команда
+правильно не стала его запускать. Для такой машины — `docker compose` из корня
+репозитория: Postgres и сервер в своих контейнерах, наружу только
+`127.0.0.1:8901`, а TLS делает ваш nginx.
+
+Раздел написан 02.10.2026 по файлам репозитория. На машине с Docker в этот день
+его не прогоняли — Docker не было ни на одной из наших.
+
+**Первый запуск.** Берите тег релиза, а не `main`: тег — это ровно то, что
+собрано и выложено как версия.
+
+```bash
+git clone https://github.com/furyteamtop/fury-antidetect-browser fury && cd fury
+git checkout v0.2.15                 # последняя версия со страницы релизов
+cp .env.example .env                 # задайте FURY_DB_PASSWORD
+docker compose up -d --build
+curl -s http://127.0.0.1:8901/v1/me  # должно быть {"error":"unauthenticated"}
+```
+
+Данные живут в двух томах: `fury-db` (база) и `fury-bundles` (сами профили,
+`/var/lib/fury/bundles` в контейнере). Пересборка и замена контейнера их не
+трогает, `docker compose down -v` — стирает.
+
+**nginx перед ним.** Обычный `server` с вашим сертификатом и `proxy_pass` на
+`127.0.0.1:8901`, плюс три строки, без которых профили не пройдут:
+
+```nginx
+location / {
+    proxy_pass http://127.0.0.1:8901;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+
+    # Профиль приходит одним запросом. Сервер принимает до 1 ГБ
+    # (FURY_MAX_BUNDLE_BYTES), по умолчанию nginx режет на 1 МБ.
+    client_max_body_size 1024m;
+    # Отдавать тело серверу по мере получения, а не сначала целиком во
+    # временный файл nginx.
+    proxy_request_buffering off;
+    # Агент ждёт передачу профиля до пяти минут; nginx по умолчанию — минуту.
+    proxy_read_timeout 300s;
+    proxy_send_timeout 300s;
+}
+```
+
+Почему у тестера на старой машине выгрузка шла по 0,06–0,5 МБ/с, а на чистой
+«всё летает», не выяснено: скачивание со старой было быстрым, и по логу клиента
+сторону не определить. Если на общей машине выгрузка медленная, а `speedtest`
+на клиенте показывает нормальный Upload — смотрите nginx и диск этой машины.
+
+**Обновление** — четыре шага, и первый не пропускайте:
+
+```bash
+cd fury
+
+# 1. Копии базы и профилей. Имя тома с профилями — с префиксом проекта,
+#    обычно fury_fury-bundles; точное покажет `docker volume ls`.
+docker compose exec -T db pg_dump -U fury fury | gzip > ~/fury-$(date +%F).sql.gz
+docker run --rm -v fury_fury-bundles:/b -v "$HOME":/out debian:bookworm-slim \
+  tar czf /out/fury-bundles-$(date +%F).tar.gz -C /b .
+
+# 2. Нужная версия
+git fetch --tags
+git checkout v0.2.15
+
+# 3. Пересобрать и заменить только сервер; база не перезапускается,
+#    миграции применяются сами при старте
+docker compose up -d --build server
+
+# 4. Проверить
+docker compose logs --tail=20 server      # последняя строка — "fury-server listening"
+curl -s http://127.0.0.1:8901/v1/me       # {"error":"unauthenticated"}
+```
+
+**Откат** — только из копии. Миграции идут в одну сторону: старая версия
+сервера на базе, которую уже обновила новая, не запустится и скажет, что не
+знает применённую миграцию. Значит: вернуть тег, восстановить дамп из шага 1,
+`docker compose up -d --build server`.
+
+**Если сервер поднят по `docker-compose.yml` до 02.10.2026** — сначала найдите,
+где лежат профили. В том файле не было тома для них, а образ не создавал
+каталог, поэтому сервер в нём просто не стартовал (`cannot create the bundle
+directory /var/lib/fury/bundles (Permission denied)`). Если у вас работает,
+значит, вы задали `FURY_BUNDLE_DIR` или монтирование сами — проверьте, что это
+том, а не каталог внутри контейнера:
+
+```bash
+docker compose exec server sh -c 'echo "${FURY_BUNDLE_DIR:-/var/lib/fury/bundles}"'
+docker inspect "$(docker compose ps -q server)" --format '{{json .Mounts}}'
+```
+
+Если путь из первой команды не попадает ни в одно монтирование из второй,
+профили живут в контейнере и пропадут при его замене. Вынесите их до
+обновления и верните после:
+
+```bash
+docker compose cp server:/var/lib/fury/bundles ./bundles-before-update
+# ... шаги 2-3 выше ...
+docker compose cp ./bundles-before-update/. server:/var/lib/fury/bundles/
+docker compose exec -u root server chown -R fury:fury /var/lib/fury/bundles
+```
+
+Если `FURY_BUNDLE_DIR` у вас задан другим путём, подставьте его вместо
+`/var/lib/fury/bundles`.
+
 **Если домен в Cloudflare — запись должна быть «DNS only» (серое облако), не
 «Proxied».** Через прокси Cloudflare проходят маленькие запросы — вход, список
 профилей, блокировки, — и поэтому всё выглядит рабочим. Но профиль команды
@@ -259,6 +368,9 @@ fury-server invite --email colleague@example.com --org-id <UUID> --role member
 sudo -u postgres pg_dump fury | gzip > /var/backups/fury-$(date +%F).sql.gz
 tar czf /var/backups/fury-bundles-$(date +%F).tar.gz -C /var/lib/fury bundles
 ```
+
+Сервер в Docker — те же две копии, командами из
+[раздела про Docker](#если-на-машине-уже-есть-другие-сайты--docker-вместо-pushsh).
 
 База без бандлов — это список профилей, которые нельзя открыть. Бандлы без базы
 — это шифротекст, к которому нет ключей. Забирайте с машины обе.

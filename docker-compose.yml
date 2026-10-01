@@ -39,6 +39,12 @@ services:
     # Session tokens over plain HTTP on a public interface would be a gift.
     ports:
       - "127.0.0.1:8901:8901"
+    # The profiles themselves. Without a volume they lived in the container and
+    # went with it at the first rebuild, leaving a database that lists versions
+    # whose bytes are gone. Back this up together with fury-db (docs/14).
+    volumes:
+      - fury-bundles:/var/lib/fury/bundles
 
 volumes:
   fury-db:
+  fury-bundles:
