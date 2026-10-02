@@ -409,6 +409,12 @@ impl Agent {
                     "core_outdated": crate::core_binary()
                         .and_then(|exe| crate::core_outdated(&exe))
                         .map(|have| json!({ "have": have, "need": crate::CHROME_MAJOR })),
+                    // The right Chrome, an older build of it. Not blocking:
+                    // `have` is the release it came from, null when that was
+                    // never recorded. See core_stale.
+                    "core_stale": crate::core_binary()
+                        .and_then(|exe| crate::core_stale(&exe))
+                        .map(|have| json!({ "have": have, "need": crate::CORE_BUILD })),
                     // Why there is no core, when the reason is not "you have
                     // not installed one". The shell shows this verbatim: a
                     // stale FURY_CORE and a missing download need opposite

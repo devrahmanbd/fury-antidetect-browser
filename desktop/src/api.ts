@@ -413,6 +413,11 @@ export interface Shell {
   /** Installed, but a different Chrome from the one this version claims to
    *  be. core_ready is false with it, so the download bar shows. */
   core_outdated?: { have: string; need: number } | null;
+  /** The right Chrome, but an older Fury build of it than this version
+   *  expects. Not blocking: core_ready stays true and profiles launch; the
+   *  shell offers the new build. `have` is null for a core installed before
+   *  releases were recorded. */
+  core_stale?: { have: string | null; need: string } | null;
   /** Progress of a core download the user asked for, straight from the agent.
    *  Absent until the agent has been asked once. `running` false with
    *  `installed` set means it finished; with `error` set means it did not. */
@@ -756,6 +761,9 @@ export const api = {
 
   invite: (email: string, role: string): Promise<{ code: string; expires_in_hours: number }> =>
     cmd("invite", { email, role }),
+
+  setMemberRole: (userId: string, role: string): Promise<{ role: string; changed: boolean }> =>
+    cmd("set_member_role", { userId, role }),
 
   /** Seal the organisation key to a member's public key. Happens in Rust; the
    *  key itself never reaches this side. */
