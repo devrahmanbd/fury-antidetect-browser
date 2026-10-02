@@ -129,6 +129,23 @@ pub fn install(src: &Path) -> Result<PathBuf> {
     })?;
     let _ = std::fs::remove_dir_all(&previous);
 
+    // Which release this is, for core_stale. Read from the archive's own name,
+    // fury-core-<release>-<platform>.tar.xz, which is what the download and
+    // the releases page both use. Anything else -- an unpacked directory, a
+    // renamed file -- was put here by hand, and is recorded as such rather
+    // than guessed at.
+    let release = src
+        .file_name()
+        .and_then(|n| n.to_str())
+        .and_then(|n| n.strip_prefix("fury-core-"))
+        .and_then(|n| n.split('-').next())
+        .filter(|r| crate::parse_release(r).is_some())
+        .unwrap_or("manual")
+        .to_string();
+    if let Err(e) = std::fs::write(crate::paths::core_release_file(), &release) {
+        tracing::warn!(error = %e, "could not record which release the core came from");
+    }
+
     // Where core_binary() will look, which is not necessarily where it landed:
     // the staging tree keeps its own shape and the rename moves the whole thing.
     let installed = dest.join(super::core_leaf());

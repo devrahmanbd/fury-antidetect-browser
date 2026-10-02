@@ -320,6 +320,9 @@ pub struct Shell {
     /// A core is installed but it is a different Chrome from the one this
     /// version claims to be: `{ have, need }`. core_ready is false with it.
     pub core_outdated: Option<serde_json::Value>,
+    /// The right Chrome, an older Fury build of it: `{ have, need }`, with
+    /// `have` null when the release was never recorded. core_ready stays true.
+    pub core_stale: Option<serde_json::Value>,
     /// This build, for the About panel and for any bug report that follows it.
     pub version: &'static str,
 
@@ -409,6 +412,7 @@ pub async fn shell_state(state: State<'_, AppState>) -> Result<Shell, ApiErr> {
     // order those happen in is the whole difference.
     let mut core_download = None;
     let mut core_outdated = None;
+    let mut core_stale = None;
     let (core_ready, core_problem) = if agent_ready {
         match crate::agent::call::<serde_json::Value>("status", serde_json::json!({})).await {
             Ok(v) => (
@@ -418,6 +422,7 @@ pub async fn shell_state(state: State<'_, AppState>) -> Result<Shell, ApiErr> {
                     // to learn about every new field.
                     core_download = v.get("core_download").cloned();
                     core_outdated = v.get("core_outdated").filter(|o| !o.is_null()).cloned();
+                    core_stale = v.get("core_stale").filter(|o| !o.is_null()).cloned();
                     v.get("core").map(|c| !c.is_null()).unwrap_or(false)
                 },
                 v.get("core_problem")
@@ -465,6 +470,7 @@ pub async fn shell_state(state: State<'_, AppState>) -> Result<Shell, ApiErr> {
         core_ready,
         core_problem,
         core_outdated,
+        core_stale,
         version: env!("CARGO_PKG_VERSION"),
         org_key_ready,
         last_email,

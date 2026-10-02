@@ -842,6 +842,54 @@ export function App() {
           </div>
         )}
 
+        {/* The right Chrome, an older build of it -- agent/src/main.rs,
+            core_stale. Profiles keep launching; this only offers the build
+            the application expects, and says what the old one lacks. A
+            tester ran the 0.2.3 core for days with Chromium's icon and
+            without the canvas fixes, because nothing said a newer one
+            existed (02.10.2026). Same download as the bar above, on press. */}
+        {shell.agent_ready && shell.core_ready && shell.core_stale && (
+          <div className="notice" role="status">
+            <div style={{ flex: 1 }}>
+              <strong>
+                {shell.core_stale.have
+                  ? t("app.coreStale", { have: shell.core_stale.have, need: shell.core_stale.need })
+                  : t("app.coreStaleUnknown", { need: shell.core_stale.need })}
+              </strong>
+              <div className="muted" style={{ marginTop: "var(--s-1)" }}>
+                {dl?.running
+                  ? dl.total > 0
+                    ? t("app.coreDownloading", {
+                        done: Math.round(dl.downloaded / 1e6).toString(),
+                        total: Math.round(dl.total / 1e6).toString(),
+                      })
+                    : t("app.coreStarting")
+                  : (dl?.error ?? t("app.coreStaleHow"))}
+              </div>
+              {dl?.running && dl.total > 0 && (
+                <progress
+                  value={dl.downloaded}
+                  max={dl.total}
+                  style={{ width: "100%", marginTop: "var(--s-1)" }}
+                />
+              )}
+            </div>
+            <button
+              disabled={dl?.running || coreBusy}
+              onClick={async () => {
+                setCoreBusy(true);
+                try {
+                  await api.downloadCore();
+                } finally {
+                  setTimeout(() => setCoreBusy(false), 3000);
+                }
+              }}
+            >
+              {dl?.running ? t("app.coreDownloadingShort") : t("app.coreUpdate")}
+            </button>
+          </div>
+        )}
+
         {shell.agent_ready && shell.core_ready && shell.core_problem && (
           <div className="notice" role="status">
             <div>

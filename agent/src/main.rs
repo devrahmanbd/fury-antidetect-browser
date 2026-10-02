@@ -427,6 +427,55 @@ pub fn core_outdated(exe: &std::path::Path) -> Option<String> {
     (major != CHROME_MAJOR).then_some(version)
 }
 
+/// The oldest core build this agent expects, named by the release that first
+/// shipped it. Bumped whenever the core is rebuilt on the same Chrome -- the
+/// seventh file a core rebuild touches, beside CHROME_MAJOR for a new Chrome.
+///
+/// core_outdated only compares Chrome majors, and from 0.2.4 to 0.2.10 the
+/// Windows core was rebuilt three times on Chrome 155: Fury's icon (0.2.4),
+/// canvas noise pixelscan stopped seeing (0.2.9), edge noise that keeps the
+/// colour (0.2.10). Nothing told an installed copy. A tester ran the 0.2.3 core
+/// until 02.10.2026 and noticed only the icon -- Chromium's blue ball on his
+/// taskbar -- while the canvas fixes he had been told about were missing too.
+pub const CORE_BUILD: &str = "0.2.10";
+
+/// `0.2.10` as (0, 2, 10); None for anything else.
+pub fn parse_release(s: &str) -> Option<(u32, u32, u32)> {
+    let mut parts = s.trim().split('.').map(|p| p.parse::<u32>().ok());
+    let r = (parts.next()??, parts.next()??, parts.next()??);
+    parts.next().is_none().then_some(r)
+}
+
+/// The installed core is the right Chrome but an older build than CORE_BUILD.
+///
+/// `Some(Some(release))` names the build; `Some(None)` is a core installed
+/// before releases were recorded, which is every core installed by 0.2.15 or
+/// earlier -- it may be current, but nothing says so, and one download settles
+/// it. Unlike core_outdated this does not stop a launch: the old build is the
+/// same Chrome, and profiles keep working while the shell offers the new one.
+///
+/// Only the core this agent installed is judged. FURY_CORE, a core found
+/// elsewhere, and a core installed by hand from something that did not name
+/// its release ("manual") are somebody's deliberate choice.
+pub fn core_stale(exe: &std::path::Path) -> Option<Option<String>> {
+    if std::env::var("FURY_CORE").is_ok_and(|v| std::path::Path::new(&v) == exe) {
+        return None;
+    }
+    if !exe.starts_with(paths::core_dir()) || core_outdated(exe).is_some() {
+        return None;
+    }
+    let need = parse_release(CORE_BUILD)?;
+    match std::fs::read_to_string(paths::core_release_file()) {
+        Err(_) => Some(None),
+        Ok(text) if text.trim() == "manual" => None,
+        Ok(text) => match parse_release(&text) {
+            Some(have) if have >= need => None,
+            Some(_) => Some(Some(text.trim().to_string())),
+            None => Some(None),
+        },
+    }
+}
+
 fn core_version_problem(exe: &std::path::Path) -> Option<String> {
     let have = core_outdated(exe)?;
     Some(format!(
@@ -903,5 +952,20 @@ mod tests {
         // A core whose version cannot be read is not called outdated.
         assert_eq!(super::core_outdated(&root.join("nowhere/Fury.app/Contents/MacOS/Fury")), None);
         std::fs::remove_dir_all(&root).ok();
+    }
+}
+
+#[cfg(test)]
+mod core_build_tests {
+    use super::*;
+
+    #[test]
+    fn releases_compare_as_numbers_not_text() {
+        assert!(parse_release("0.2.9") < parse_release("0.2.10"));
+        assert_eq!(parse_release("0.2.15"), Some((0, 2, 15)));
+        assert_eq!(parse_release("manual"), None);
+        assert_eq!(parse_release("0.2"), None);
+        assert_eq!(parse_release("0.2.10.1"), None);
+        assert!(parse_release(CORE_BUILD).is_some(), "CORE_BUILD must parse");
     }
 }

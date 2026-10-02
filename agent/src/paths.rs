@@ -52,6 +52,14 @@ pub fn core_dir() -> PathBuf {
     data_dir().join("core.bundle")
 }
 
+/// Which release the installed core came from, written by install_core.
+///
+/// Beside core.bundle rather than in it: an install replaces that directory
+/// whole, and the record must describe whatever is there after it.
+pub fn core_release_file() -> PathBuf {
+    data_dir().join("core.release")
+}
+
 /// Where a core installed by an earlier version sits.
 ///
 /// Renamed rather than left: two copies of a 544 MB browser is not a tidy way
