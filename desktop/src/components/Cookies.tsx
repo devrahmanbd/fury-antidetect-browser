@@ -29,10 +29,18 @@ export function Cookies({
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
 
+  // A bare array is the native shape, but DevTools and a few exporters wrap it
+  // as `{"cookies":[…]}` — which is also exactly what our own export looks like
+  // before `JSON.stringify(cookies)` unwraps it. Accept both so a file someone
+  // pasted whole imports as-is instead of failing with "not a JSON array".
   const parsed = (): unknown[] | null => {
     try {
       const value = JSON.parse(text);
-      return Array.isArray(value) ? value : null;
+      if (Array.isArray(value)) return value;
+      if (value && typeof value === "object" && Array.isArray((value as { cookies?: unknown }).cookies)) {
+        return (value as { cookies: unknown[] }).cookies;
+      }
+      return null;
     } catch {
       return null;
     }
