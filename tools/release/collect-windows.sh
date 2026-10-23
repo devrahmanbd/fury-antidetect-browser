@@ -108,8 +108,14 @@ if [ -d "$desktop" ] && [ -f "$dest/fury-$version-windows-x64-setup.exe" ]; then
   # Windows-1252, so "Fury установка" reached the Desktop as
   # "Fury ÑƒÑÑ‚Ð°Ð½Ð¾Ð²ÐºÐ°" -- a thing this repository already documents in
   # tools/verify-windows.ps1 and which I then did anyway.
+  #
+  # ONE, because a copy per release is not a copy somebody will see: by 0.4.11
+  # the Desktop held 67 identical flame icons, and the newest was the one
+  # hardest to find. Every installer is still in $dest; the Desktop only gets
+  # the latest.
+  rm -f "$desktop"/Fury-Setup-*.exe
   cp "$dest/fury-$version-windows-x64-setup.exe" "$desktop/Fury-Setup-$version.exe"
-  say "and Fury-Setup-$version.exe is on the Desktop"
+  say "and Fury-Setup-$version.exe is on the Desktop (older copies removed)"
   # Windows caches a file's icon BY PATH. An installer built before the icon was
   # configured leaves that icon behind for every later build written to the same
   # place, which reads as "the logo did not work" when the logo is in the file.
