@@ -39,6 +39,7 @@ import { OUR_SERVERS, versionNewer } from "./defaults";
  *  taskbar icon, canvas fixes and "about 150 MB" (13.10.2026). A build with
  *  no line of its own gets a plain one; the size is shown by the download. */
 const CORE_WHAT: Record<string, Key> = {
+  "0.4.12": "app.coreWhat0412",
   "0.3.8": "app.coreWhat038",
   "0.3.7": "app.coreWhat037",
 };

@@ -494,10 +494,14 @@ pub fn core_outdated(exe: &std::path::Path) -> Option<String> {
 ///
 /// 0.3.8 rebuilt only the macOS core: 0903, a profile restoring its session
 /// quits with its last window too.
+///
+/// 0.4.12 rebuilt both: what demo.fingerprint.com named tampering -- client
+/// rects off the layout grid (0033), WebGL extensions out of Chrome's order
+/// (0031) -- and Chrome's own Google voices (0042).
 #[cfg(windows)]
-pub const CORE_BUILD: &str = "0.3.7";
+pub const CORE_BUILD: &str = "0.4.12";
 #[cfg(not(windows))]
-pub const CORE_BUILD: &str = "0.3.8";
+pub const CORE_BUILD: &str = "0.4.12";
 
 /// `0.2.10` as (0, 2, 10); None for anything else.
 pub fn parse_release(s: &str) -> Option<(u32, u32, u32)> {
@@ -554,12 +558,12 @@ pub fn core_stale(exe: &std::path::Path) -> Option<Option<String>> {
 #[cfg(target_os = "macos")]
 const CORE_BUILD_ENGINE: Option<(&str, &str)> = Some((
     "../Frameworks/Fury Framework.framework/Versions/Current/Fury Framework",
-    "ebcc89046d7990bc411b2edb919970043228cc2bee42f68a91f1e4b141e4ab8d",
+    "ed92272c1219f8b9198500fe7adaeba7b0bd21959e10d3abdd1f63239b5d60de",
 ));
 #[cfg(windows)]
 const CORE_BUILD_ENGINE: Option<(&str, &str)> = Some((
     "chrome.dll",
-    "4a7f55d5b4c556f578ed1112ff5b3e2c1b3612de8eeae1a1e5c4e3e4f4d00869",
+    "17db120f6edaffe5e48bf629c777eefe221f0f00a8969f8d3822f7b62d525946",
 ));
 #[cfg(not(any(target_os = "macos", windows)))]
 const CORE_BUILD_ENGINE: Option<(&str, &str)> = None;
