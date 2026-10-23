@@ -176,6 +176,15 @@
 # oscillator, 27.09.2026). Every sample of a moving signal is still perturbed.
 0040-audio-noise.patch
 0041-speech-voices.patch
+# The nineteen "Google ..." voices: Chrome's network TTS is a component
+# extension Chromium loads only under GOOGLE_CHROME_BRANDING, so a Chromium
+# lists the platform's voices and nothing else, and no Google Chrome on Windows
+# or macOS does. demo.fingerprint.com named the core "Chromium-Based Browser"
+# without them and "Chrome 155" with them (23.10.2026). Not config-driven: it is
+# what the build is, like the branding below. Speaking with one of them fails
+# with an error event, because the core has no Google API key -- as a Chrome
+# that cannot reach Google does.
+0042-network-speech-voices.patch
 
 # --- fonts ------------------------------------------------------------------
 # Filters at the fallback layer, not just the enumeration API — measurement

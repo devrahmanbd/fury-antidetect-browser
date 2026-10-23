@@ -1,0 +1,19 @@
+diff --git a/chrome/browser/extensions/component_loader.cc b/chrome/browser/extensions/component_loader.cc
+index 80927be5ad..285002fa59 100644
+--- a/chrome/browser/extensions/component_loader.cc
++++ b/chrome/browser/extensions/component_loader.cc
+@@ -788,9 +788,12 @@ void ComponentLoader::AddDefaultComponentExtensionsWithBackgroundPages(
+   AddContextualTasksExtension();
+ 
+ // http://crbug.com/41070702
+-#if BUILDFLAG(GOOGLE_CHROME_BRANDING) && !BUILDFLAG(IS_CHROMEOS)
++// Fury: loaded without Chrome branding too. Its 19 "Google ..." voices are in
++// speechSynthesis.getVoices() of every Google Chrome on Windows and macOS and
++// of no Chromium, so their absence names the browser as "not Chrome".
++#if !BUILDFLAG(IS_CHROMEOS)
+   AddNetworkSpeechSynthesisExtension();
+-#endif  // BUILDFLAG(GOOGLE_CHROME_BRANDING) && !BUILDFLAG(IS_CHROMEOS)
++#endif  // !BUILDFLAG(IS_CHROMEOS)
+ }
+ 
+ void ComponentLoader::

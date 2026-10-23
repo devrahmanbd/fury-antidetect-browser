@@ -400,16 +400,17 @@ index 0000000000..90accae0fd
 +#endif  // COMPONENTS_FURY_FURY_CONFIG_H_
 diff --git a/components/fury/fury_noise.cc b/components/fury/fury_noise.cc
 new file mode 100644
-index 0000000000..cd8a58a86f
+index 0000000000..c6a5c886d8
 --- /dev/null
 +++ b/components/fury/fury_noise.cc
-@@ -0,0 +1,142 @@
+@@ -0,0 +1,151 @@
 +// Copyright 2026 The Fury Authors
 +// Use of this source code is governed by a BSD-style license that can be
 +// found in the LICENSE file.
 +
 +#include "components/fury/fury_noise.h"
 +
++#include <cmath>
 +#include <optional>
 +
 +#include "components/fury/fury_config.h"
@@ -462,19 +463,27 @@ index 0000000000..cd8a58a86f
 +  return true;
 +}
 +
-+double PerturbRectValue(uint64_t seed, double value) {
-+  if (value == 0.0) {
-+    // A zero rect means the element is not laid out. Nudging it would turn
-+    // "absent" into "present at a strange position".
++double PerturbLayoutEdge(uint64_t seed, double value, double zoom) {
++  if (value == 0.0 || !(zoom > 0.0)) {
 +    return value;
 +  }
-+  // Quantised before hashing so that values differing only in the noise we
-+  // ourselves added map to the same offset — otherwise perturbing an already
-+  // perturbed rect would compound.
-+  const int64_t quantised = static_cast<int64_t>(value * 1000.0);
-+  const uint64_t h = Mix(seed ^ static_cast<uint64_t>(quantised));
-+  const double offset = static_cast<double>(h & 0x3ff) / 1024.0 * 0.0009;
-+  return value + ((h >> 10) & 1 ? offset : -offset);
++  const double quarters = value / zoom * 4.0;
++  if (std::abs(quarters - std::round(quarters)) < 1e-6) {
++    return value;
++  }
++  const double units = std::round(value * 64.0);
++  if (std::abs(value * 64.0 - units) > 1e-6) {
++    return value;
++  }
++  // Keyed on the sub-pixel phase alone. These coordinates already include the
++  // scroll offset, and a key on the whole value would give the same text a
++  // new width after every scroll; the phase survives any whole-pixel move.
++  const int64_t phase = ((static_cast<int64_t>(units) % 64) + 64) % 64;
++  const uint64_t h = Mix(seed ^ static_cast<uint64_t>(phase));
++  // -2, -1, +1 or +2 units: never zero, so every text edge carries the seed.
++  const double steps =
++      static_cast<double>((h & 1) + 1) * ((h & 2) ? 1.0 : -1.0);
++  return (units + steps) / 64.0;
 +}
 +
 +void ApplyCanvasNoise(uint64_t seed,
@@ -548,10 +557,10 @@ index 0000000000..cd8a58a86f
 +}  // namespace fury
 diff --git a/components/fury/fury_noise.h b/components/fury/fury_noise.h
 new file mode 100644
-index 0000000000..f1c8705b74
+index 0000000000..cbefdc859a
 --- /dev/null
 +++ b/components/fury/fury_noise.h
-@@ -0,0 +1,89 @@
+@@ -0,0 +1,105 @@
 +// Copyright 2026 The Fury Authors
 +// Use of this source code is governed by a BSD-style license that can be
 +// found in the LICENSE file.
@@ -628,15 +637,31 @@ index 0000000000..f1c8705b74
 +// Seed for getClientRects()/getBoundingClientRect() perturbation, if configured.
 +COMPONENT_EXPORT(FURY) bool GetClientRectsNoiseSeed(uint64_t* out_seed);
 +
-+// A sub-pixel offset derived from the value being perturbed.
++// One edge of a client rect, moved by one or two LayoutUnits (1/64 px each), or
++// left exactly where layout put it.
 +//
-+// Derived from the value itself, not from a counter: measuring the same element
-+// twice must give the same answer, or a detector that calls
-+// getBoundingClientRect() in a loop sees geometry that drifts. Magnitude is
-+// under a thousandth of a pixel — invisible to layout, but these numbers are
-+// reported to ~15 significant digits and every fingerprinting library hashes
-+// them.
-+COMPONENT_EXPORT(FURY) double PerturbRectValue(uint64_t seed, double value);
++// |value| is an edge in absolute layout coordinates, before the scroll and
++// zoom adjustment, where layout's own numbers sit on the 1/64 grid; |zoom| is
++// the effective zoom that adjustment will divide by. What a page reads is
++// then a number real Chrome could have produced -- the earlier version added
++// under a thousandth of a pixel and reported 73.78158569335938 where layout
++// can only say 73.78125 or 73.796875, and demo.fingerprint.com called the
++// profile an anti-detect browser for exactly that (23.10.2026).
++//
++// Left alone: edges on the quarter-pixel grid in CSS px (margins, integer box
++// sizes, centred halves -- geometry the page set and can predict), and values
++// off the 1/64 grid (transformed boxes, whose numbers are not layout units).
++// What moves is what text measurement produces: the edges after a run of
++// glyphs.
++//
++// An edge, not a width: the offset is a function of the edge's sub-pixel
++// phase alone, so two boxes that share an edge still share it, the same text
++// keeps its width when it moves by whole pixels or the page scrolls, and
++// getClientRects(), getBoundingClientRect() and a Range over the same text
++// agree.
++COMPONENT_EXPORT(FURY) double PerturbLayoutEdge(uint64_t seed,
++                                                double value,
++                                                double zoom);
 +
 +}  // namespace fury
 +

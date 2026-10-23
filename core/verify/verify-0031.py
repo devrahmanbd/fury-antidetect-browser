@@ -115,6 +115,10 @@ PROBE = """
     viewportDims: Array.from(P('MAX_VIEWPORT_DIMS')),
     viewportKind: P('MAX_VIEWPORT_DIMS').constructor.name,
     extensions: gl.getSupportedExtensions(),
+    extensions2: (() => {
+      const g = document.createElement('canvas').getContext('webgl2');
+      return g ? g.getSupportedExtensions() : null;
+    })(),
     pixels: read(),
     pixelsAgain: read(),
     solidOdd: (() => {
@@ -154,7 +158,10 @@ def main():
     claims = Claims("0031 — WebGL parameters and pixels", CORE)
 
     config = {
-        "gpu": {"webglParams": PARAMS, "webglExtensions": EXTENSIONS},
+        # Reversed, so that "reported in the core's own order" cannot pass by
+        # the persona happening to list them that way already.
+        "gpu": {"webglParams": PARAMS,
+                "webglExtensions": list(reversed(EXTENSIONS))},
         "noise": {"canvasSeed": 0x061A0001},
     }
     with launch(CORE, config) as s:
@@ -208,6 +215,12 @@ def main():
         claims.check(sorted(a["extensions"]) == sorted(EXTENSIONS),
                      f"getSupportedExtensions returns exactly the persona's list "
                      f"({len(a['extensions'])} of {len(EXTENSIONS)})")
+        claims.check(a["extensions2"] is not None
+                     and "ANGLE_instanced_arrays" not in a["extensions2"]
+                     and "OES_element_index_uint" not in a["extensions2"],
+                     f"a WebGL 2 context does not list the persona's WebGL 1-only "
+                     f"names: they are core there, and no real WebGL 2 lists "
+                     f"them (got {a['extensions2']})")
 
         # The strings nobody configured must still be true.
         claims.check("WebGL" in a["version"] and "GLSL" in a["slVersion"],
@@ -236,6 +249,12 @@ def main():
         print(f"  unconfigured extensions: {len(bare['extensions'])}")
         # Not MAX_TEXTURE_SIZE: this Mac reports 16384 as well, and a control
         # that happens to agree with the persona proves nothing.
+        native = [e for e in bare["extensions"] if e in EXTENSIONS]
+        claims.check(a["extensions"] == native,
+                     f"in the order the core registers them, as every Chrome "
+                     f"reports them, not in the persona's order: a sorted list "
+                     f"is no Chrome's, and demo.fingerprint.com scored it "
+                     f"(got {a['extensions']}, native {native})")
         claims.control(
             bare["renderer"] != PARAMS["RENDERER"]
             and bare["viewportDims"] != [32767, 32767]

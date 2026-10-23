@@ -1,5 +1,5 @@
 diff --git a/third_party/blink/renderer/core/dom/element.cc b/third_party/blink/renderer/core/dom/element.cc
-index 46a917256e..39fa326393 100644
+index 6816436412..98e35ed98a 100644
 --- a/third_party/blink/renderer/core/dom/element.cc
 +++ b/third_party/blink/renderer/core/dom/element.cc
 @@ -26,6 +26,8 @@
@@ -11,28 +11,48 @@ index 46a917256e..39fa326393 100644
  #include <algorithm>
  #include <bitset>
  #include <limits>
-@@ -3425,6 +3427,20 @@ Vector<gfx::RectF> Element::GetClientRectsNoAdjustment() {
+@@ -3432,6 +3434,23 @@ DOMPoint* Element::convertPointFromNode(
+                                               exception_state);
+ }
+ 
++// Fury (0033): a client rect with its edges moved by fury::PerturbLayoutEdge,
++// before the zoom adjustment, while its numbers are still layout units.
++static gfx::RectF FuryPerturbClientRect(uint64_t seed,
++                                        const gfx::RectF& rect,
++                                        const LayoutObject* layout_object) {
++  const double zoom =
++      layout_object ? layout_object->StyleRef().EffectiveZoom() : 1.0;
++  const double left = fury::PerturbLayoutEdge(seed, rect.x(), zoom);
++  const double top = fury::PerturbLayoutEdge(seed, rect.y(), zoom);
++  const double right = fury::PerturbLayoutEdge(seed, rect.right(), zoom);
++  const double bottom = fury::PerturbLayoutEdge(seed, rect.bottom(), zoom);
++  if (right < left || bottom < top) {
++    return rect;
++  }
++  return gfx::RectF(left, top, right - left, bottom - top);
++}
++
+ Vector<gfx::RectF> Element::GetClientRectsNoAdjustment() {
+   // TODO(crbug.com/1499981): This should be removed once synchronized scrolling
+   // impact is understood.
+@@ -3448,6 +3467,16 @@ Vector<gfx::RectF> Element::GetClientRectsNoAdjustment() {
    for (auto& quad : quads) {
      result.emplace_back(quad.BoundingBox());
    }
 +
-+  // getClientRects() and getBoundingClientRect() both read through here, so one
-+  // override keeps them agreeing. Sub-pixel and derived from the value itself,
-+  // so the same element measured twice gives the same answer — a detector that
-+  // loops over getBoundingClientRect() must not see geometry drift.
++  // getClientRects() reads through here. Derived from the edges themselves, so
++  // the same element measured twice gives the same answer — a detector that
++  // loops over getClientRects() must not see geometry drift.
 +  uint64_t seed = 0;
 +  if (fury::GetClientRectsNoiseSeed(&seed)) {
 +    for (auto& rect : result) {
-+      rect.SetRect(fury::PerturbRectValue(seed, rect.x()),
-+                   fury::PerturbRectValue(seed, rect.y()),
-+                   fury::PerturbRectValue(seed, rect.width()),
-+                   fury::PerturbRectValue(seed, rect.height()));
++      rect = FuryPerturbClientRect(seed, rect, GetLayoutObject());
 +    }
 +  }
    return result;
  }
  
-@@ -3448,6 +3464,17 @@ gfx::RectF Element::GetBoundingClientRectNoLifecycleUpdate() const {
+@@ -3471,6 +3500,14 @@ gfx::RectF Element::GetBoundingClientRectNoLifecycleUpdate() const {
      return result;
    }
  
@@ -41,12 +61,72 @@ index 46a917256e..39fa326393 100644
 +  // compare the two and see one lying.
 +  uint64_t fury_seed = 0;
 +  if (fury::GetClientRectsNoiseSeed(&fury_seed)) {
-+    result.SetRect(fury::PerturbRectValue(fury_seed, result.x()),
-+                   fury::PerturbRectValue(fury_seed, result.y()),
-+                   fury::PerturbRectValue(fury_seed, result.width()),
-+                   fury::PerturbRectValue(fury_seed, result.height()));
++    result = FuryPerturbClientRect(fury_seed, result, GetLayoutObject());
 +  }
 +
    LayoutObject* element_layout_object = GetLayoutObject();
    DCHECK(element_layout_object);
    GetDocument().AdjustRectForScrollAndAbsoluteZoom(result,
+diff --git a/third_party/blink/renderer/core/dom/range.cc b/third_party/blink/renderer/core/dom/range.cc
+index fcea0d9667..506fa4aeb8 100644
+--- a/third_party/blink/renderer/core/dom/range.cc
++++ b/third_party/blink/renderer/core/dom/range.cc
+@@ -25,6 +25,8 @@
+ 
+ #include "third_party/blink/renderer/core/dom/range.h"
+ 
++#include "components/fury/fury_noise.h"
++
+ #include "third_party/blink/renderer/core/display_lock/display_lock_document_state.h"
+ #include "third_party/blink/renderer/core/display_lock/display_lock_utilities.h"
+ #include "third_party/blink/renderer/core/dom/character_data.h"
+@@ -1699,6 +1701,33 @@ DOMRect* Range::getBoundingClientRect() const {
+   return DOMRect::FromRectF(BoundingRect());
+ }
+ 
++// Fury (0033): the edges Element::getBoundingClientRect() reports, moved the
++// same way, so a Range over a span's text and the span itself still measure
++// alike. Transformed quads are left as layout produced them, as the element
++// side leaves values off the layout grid.
++static void FuryPerturbQuads(Vector<gfx::QuadF>& quads,
++                             const LayoutObject& layout_object) {
++  uint64_t seed = 0;
++  if (!fury::GetClientRectsNoiseSeed(&seed)) {
++    return;
++  }
++  const double zoom = layout_object.StyleRef().EffectiveZoom();
++  for (auto& quad : quads) {
++    if (!quad.IsRectilinear()) {
++      continue;
++    }
++    const gfx::RectF box = quad.BoundingBox();
++    const double left = fury::PerturbLayoutEdge(seed, box.x(), zoom);
++    const double top = fury::PerturbLayoutEdge(seed, box.y(), zoom);
++    const double right = fury::PerturbLayoutEdge(seed, box.right(), zoom);
++    const double bottom = fury::PerturbLayoutEdge(seed, box.bottom(), zoom);
++    if (right < left || bottom < top) {
++      continue;
++    }
++    quad = gfx::QuadF(gfx::RectF(left, top, right - left, bottom - top));
++  }
++}
++
+ // TODO(editing-dev): We should make
+ // |Document::AdjustQuadsForScrollAndAbsoluteZoom()| as const function
+ // and takes |const LayoutObject&|.
+@@ -1708,6 +1737,7 @@ static Vector<gfx::QuadF> ComputeTextQuads(const Document& owner_document,
+                                            unsigned end_offset) {
+   Vector<gfx::QuadF> text_quads;
+   layout_text.AbsoluteQuadsForRange(text_quads, start_offset, end_offset);
++  FuryPerturbQuads(text_quads, layout_text);
+   const_cast<Document&>(owner_document)
+       .AdjustQuadsForScrollAndAbsoluteZoom(
+           text_quads, const_cast<LayoutText&>(layout_text));
+@@ -1747,6 +1777,7 @@ void Range::GetBorderAndTextQuads(Vector<gfx::QuadF>& quads) const {
+         continue;
+       Vector<gfx::QuadF> element_quads;
+       layout_object->AbsoluteQuads(element_quads);
++      FuryPerturbQuads(element_quads, *layout_object);
+       owner_document_->AdjustQuadsForScrollAndAbsoluteZoom(element_quads,
+                                                            *layout_object);
+ 

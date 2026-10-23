@@ -409,18 +409,16 @@ impl Persona {
                 "mobile": self.is_phone(),
                 "wow64": false,
                 "fullVersion": ctx.chrome_full_version,
-                // Empty is what a desktop Chrome sends. The header exists and
-                // is read; omitting the key left the patch falling back to
-                // whatever the host reports, which on a phone-shaped host
-                // would contradict Sec-CH-UA-Mobile: ?0.
-                //
-                // A phone and a tablet name themselves, as Chrome on Android
-                // does (user_agent_utils.cc, GetFormFactorsClientHint).
-                "formFactors": match self.mobile.as_ref().map(|m| m.form_factor.as_str()) {
-                    Some("phone") => vec!["Mobile"],
-                    Some("tablet") => vec!["Tablet"],
-                    _ => Vec::<&str>::new(),
-                },
+                // What Chrome 155 computes (user_agent_utils.cc,
+                // GetFormFactorsClientHint): "Mobile" when the mobile bit is
+                // set, "Desktop" otherwise -- a tablet too, since its mobile
+                // bit is off. This used to send an empty list for a desktop,
+                // which older Chrome did; real Chrome 155 on a Mac answers
+                // ["Desktop"] (measured 23.10.2026). The key must be present:
+                // omitting it left the patch falling back to whatever the host
+                // reports, which on a phone-shaped host would contradict
+                // Sec-CH-UA-Mobile: ?0.
+                "formFactors": if self.is_phone() { ["Mobile"] } else { ["Desktop"] },
             },
             "screen": {
                 "width": self.screen.width,
@@ -1163,7 +1161,7 @@ mod tests {
         assert!(c.get("mobile").is_none());
         assert_eq!(c["clientHints"]["mobile"], false);
         assert_eq!(c["clientHints"]["model"], "");
-        assert_eq!(c["clientHints"]["formFactors"], serde_json::json!([]));
+        assert_eq!(c["clientHints"]["formFactors"], serde_json::json!(["Desktop"]));
     }
 
     #[test]
@@ -1174,7 +1172,7 @@ mod tests {
         p.validate().unwrap_or_else(|e| panic!("{e:?}"));
         let c = p.derive_core_config(1, &ctx());
         assert_eq!(c["clientHints"]["mobile"], false);
-        assert_eq!(c["clientHints"]["formFactors"], serde_json::json!(["Tablet"]));
+        assert_eq!(c["clientHints"]["formFactors"], serde_json::json!(["Desktop"]));
     }
 
     #[test]

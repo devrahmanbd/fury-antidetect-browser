@@ -1,31 +1,31 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright 2026 Bogdan Shapovalov and the Fury authors
-"""Element geometry: perturbed, but never drifting.
+"""Element geometry: perturbed, on the layout grid, and never drifting.
 
 `getBoundingClientRect()` returns sub-pixel numbers that depend on the font
 stack, the rasteriser and the layout engine, which is why measuring a string of
-text is a fingerprint. 0033 perturbs them — and the danger is entirely in HOW.
+text is a fingerprint. 0033 perturbs them -- and the danger is entirely in HOW.
 
-Four claims, and the second is the one worth having:
+The first version added under a thousandth of a pixel to every field, and
+reported 73.78158569335938 where layout can only say 73.78125: Blink lays out in
+1/64 px units, and a number off that grid is proof of tampering on its own.
+demo.fingerprint.com flagged the profile as an anti-detect browser for it
+(23.10.2026). The edges now move by whole layout units, and only the edges
+text measurement produces.
 
-  * the values MOVED. A rect identical to the unconfigured build is no spoof.
-  * they do NOT DRIFT. The same element measured a hundred times gives one
-    answer. The perturbation is derived from the value itself, so measuring
-    again re-derives the same offset — and a detector that loops over
-    getBoundingClientRect() watching for movement finds none. This is the claim
-    that separates 0033 from the naive version of itself, which would make the
-    browser far more conspicuous than an unspoofed one.
-  * `getClientRects()` and `getBoundingClientRect()` AGREE, because they read
-    through the same override; a single-line box's bounding rect is its one
-    client rect.
-  * the geometry is still INTERNALLY CONSISTENT: right - left equals width,
-    bottom - top equals height. An override applied to each field
-    independently would break the subtraction, which is three lines of JS to
-    check.
+Claims:
 
-And the perturbation must be SMALL — under a hundredth of a pixel, so nothing
-that lays out a page notices, while every hash of the numbers changes.
+  * the values MOVED, and a different seed moves them differently.
+  * every number is still on the layout grid, and the edges the page set
+    itself (left: 37px) are exactly where it set them. The grid is 1/64 of a
+    DEVICE pixel: with zoom-for-DSF a retina screen lays out at zoom 2, and an
+    honest Chrome there reports 259.9921875 -- 1/128 of a CSS px.
+  * they do NOT DRIFT: the same element measured a hundred times gives one
+    answer, and the same text moved by whole pixels keeps its width.
+  * the geometry is INTERNALLY CONSISTENT: right - left is width, two inline
+    boxes that touch still share their edge, getClientRects() agrees with
+    getBoundingClientRect(), and a Range over the text agrees with the box.
 
 Usage: core/verify/verify-0033.py <core binary>
 """
@@ -52,38 +52,76 @@ READ = """
 (() => {
   // Text, because text is what a geometry fingerprint actually measures: the
   // width of a rendered string is the font stack in one number.
-  const d = document.createElement('div');
-  d.style.cssText = 'position:absolute;left:37px;top:53px;font:16px serif;white-space:nowrap';
-  d.textContent = 'Fury \\u2014 geometry 0033 \\u2014 mmmmiiiillll';
-  document.body.appendChild(d);
+  const host = document.createElement('div');
+  host.style.cssText = 'position:absolute;left:37px;top:53px;font:16px serif;white-space:nowrap';
+  const a = document.createElement('span');
+  a.textContent = 'Fury \\u2014 geometry 0033 \\u2014 mmmmiiiillll';
+  const b = document.createElement('span');
+  b.textContent = 'xyzzy';
+  host.append(a, b);
+  document.body.appendChild(host);
 
-  const r = d.getBoundingClientRect();
+  // The same string 100 whole pixels to the right.
+  const moved = document.createElement('div');
+  moved.style.cssText = 'position:absolute;left:137px;top:153px;font:16px serif;white-space:nowrap';
+  moved.textContent = a.textContent;
+  document.body.appendChild(moved);
+
+  // More strings, for "a different seed measures differently".
+  const widths = ['Hamburgefonstiv', 'The quick brown fox', '0123456789', 'WWWWiiii'].map(t => {
+    const e = document.createElement('span');
+    e.style.cssText = 'font:15px sans-serif;white-space:nowrap';
+    e.textContent = t;
+    document.body.appendChild(e);
+    const w = e.getBoundingClientRect().width;
+    e.remove();
+    return w;
+  });
+
+  const r = a.getBoundingClientRect();
   const rect = {
     x: r.x, y: r.y, width: r.width, height: r.height,
     top: r.top, right: r.right, bottom: r.bottom, left: r.left,
   };
 
   // A hundred more reads. If any of them differs, the noise depends on
-  // something other than the value.
+  // something other than the geometry.
   let drifted = 0;
   for (let i = 0; i < 100; i++) {
-    const again = d.getBoundingClientRect();
+    const again = a.getBoundingClientRect();
     if (again.width !== r.width || again.left !== r.left ||
         again.height !== r.height || again.top !== r.top) {
       drifted++;
     }
   }
 
-  const list = d.getClientRects();
+  const list = a.getClientRects();
   const first = list.length ? {
     width: list[0].width, height: list[0].height,
     left: list[0].left, top: list[0].top,
   } : null;
 
-  d.remove();
-  return JSON.stringify({rect, drifted, rectCount: list.length, first});
+  const range = document.createRange();
+  range.selectNodeContents(a.firstChild);
+  const rr = range.getBoundingClientRect();
+
+  const out = {
+    rect, drifted, rectCount: list.length, first,
+    bLeft: b.getBoundingClientRect().left,
+    range: {left: rr.left, right: rr.right, width: rr.width},
+    movedWidth: moved.getBoundingClientRect().width,
+    widths,
+    dpr: devicePixelRatio,
+  };
+  host.remove();
+  moved.remove();
+  return JSON.stringify(out);
 })()
 """
+
+
+def on_grid(v, dpr):
+    return abs(v * 64 * dpr - round(v * 64 * dpr)) < 1e-9
 
 
 def main():
@@ -91,59 +129,67 @@ def main():
 
     with launch(CORE, {"noise": {"clientRectsSeed": SEED_A}}) as s:
         a = json.loads(s.js(READ))
-        print(f"  seed A: width {a['rect']['width']!r} left {a['rect']['left']!r}")
+        r = a["rect"]
+        print(f"  seed A: width {r['width']!r} left {r['left']!r}")
 
         claims.check(a["drifted"] == 0,
                      f"a hundred further reads of the same element return the "
                      f"same numbers — noise that drifts is a stronger signal "
                      f"than no noise ({a['drifted']} differed)")
+        dpr = a["dpr"]
+        claims.check(all(on_grid(r[k], dpr) for k in r)
+                     and on_grid(a["bLeft"], dpr),
+                     f"every number is on Blink's layout grid of 1/64 device px "
+                     f"(1/{64 * dpr:g} CSS px at devicePixelRatio {dpr:g}), as "
+                     f"real Chrome's are — a value off it is tampering in plain "
+                     f"sight ({r})")
+        claims.check(r["left"] == 37 and r["top"] == 53,
+                     f"edges the page set itself are untouched: left {r['left']}, "
+                     f"top {r['top']} for left:37px; top:53px")
+        claims.check(a["movedWidth"] == r["width"],
+                     f"the same text 100 px to the right measures the same width "
+                     f"({a['movedWidth']} vs {r['width']})")
 
-        r = a["rect"]
-        claims.check(abs((r["right"] - r["left"]) - r["width"]) < 1e-9,
-                     f"right - left is still width — the fields were not "
-                     f"perturbed independently "
+        claims.check(abs((r["right"] - r["left"]) - r["width"]) < 1e-9
+                     and abs((r["bottom"] - r["top"]) - r["height"]) < 1e-9,
+                     f"right - left is width and bottom - top is height "
                      f"({r['right'] - r['left']} vs {r['width']})")
-        claims.check(abs((r["bottom"] - r["top"]) - r["height"]) < 1e-9,
-                     f"and bottom - top is still height "
-                     f"({r['bottom'] - r['top']} vs {r['height']})")
-        claims.check(r["x"] == r["left"] and r["y"] == r["top"],
-                     "x and y still equal left and top, as they do in every "
-                     "browser for a rect with no transform")
-
-        claims.check(a["rectCount"] == 1 and a["first"] is not None,
-                     f"a single-line box has exactly one client rect "
-                     f"(got {a['rectCount']})")
-        claims.check(
-            abs(a["first"]["width"] - r["width"]) < 1e-9
-            and abs(a["first"]["left"] - r["left"]) < 1e-9,
-            "getClientRects()[0] and getBoundingClientRect() agree — they read "
-            "through the same override",
-        )
+        claims.check(a["bLeft"] == r["right"],
+                     f"the next inline box starts exactly where this one ends — "
+                     f"a shared edge is moved once, for both "
+                     f"({a['bLeft']} vs {r['right']})")
+        claims.check(a["rectCount"] == 1 and a["first"] is not None
+                     and abs(a["first"]["width"] - r["width"]) < 1e-9
+                     and abs(a["first"]["left"] - r["left"]) < 1e-9,
+                     f"getClientRects()[0] and getBoundingClientRect() agree "
+                     f"(got {a['rectCount']} rects, {a['first']})")
+        claims.check(a["range"]["left"] == r["left"]
+                     and a["range"]["right"] == r["right"],
+                     f"a Range over the text measures what its box measures "
+                     f"({a['range']} vs left {r['left']} right {r['right']})")
 
     with launch(CORE, {"noise": {"clientRectsSeed": SEED_B}}) as s:
         b = json.loads(s.js(READ))
-        print(f"  seed B: width {b['rect']['width']!r} left {b['rect']['left']!r}")
-        claims.check(b["rect"]["width"] != a["rect"]["width"],
-                     f"a different seed measures a different width — otherwise "
-                     f"every profile shares one geometry hash "
-                     f"({b['rect']['width']} vs {a['rect']['width']})")
+        print(f"  seed B: width {b['rect']['width']!r}, widths {b['widths']}")
+        claims.check(b["widths"] != a["widths"] or b["rect"]["width"] != r["width"],
+                     f"a different seed measures different text widths — "
+                     f"otherwise every profile shares one geometry hash "
+                     f"({b['widths']} vs {a['widths']})")
 
     with launch(CORE, None) as s:
         bare = json.loads(s.js(READ))
         print(f"  unconfigured: width {bare['rect']['width']!r} "
               f"left {bare['rect']['left']!r}")
 
-        moved = abs(a["rect"]["width"] - bare["rect"]["width"])
-        claims.check(moved > 0,
-                     f"the configured build measures a different width from the "
-                     f"unconfigured one — it moved by {moved}")
-        claims.check(moved < 0.01,
-                     f"but by less than a hundredth of a pixel, so nothing that "
-                     f"lays out a page notices ({moved})")
+        moved = abs(r["width"] - bare["rect"]["width"])
+        claims.check(0 < moved <= 2 / (64 * dpr),
+                     f"the configured build moved the text's edge by one or two "
+                     f"layout units, no more ({moved * 64 * dpr:g} units)")
         claims.control(
-            bare["drifted"] == 0 and bare["rect"]["width"] != a["rect"]["width"],
-            f"an unconfigured build is stable too and measures its own width — "
-            f"stability is the floor, not the achievement "
+            bare["drifted"] == 0 and bare["rect"]["width"] != r["width"]
+            and all(on_grid(v, dpr) for v in bare["rect"].values()),
+            f"an unconfigured build is stable too, measures its own width, and "
+            f"is on the same grid the claim above holds the configured one to "
             f"(got {bare['rect']['width']})",
         )
 
