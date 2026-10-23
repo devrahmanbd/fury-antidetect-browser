@@ -1,5 +1,5 @@
 {
-  "__collectedInMs": 4396,
+  "__collectedInMs": 4230,
   "__probeVersion": "0.3.0",
   "__redacted": true,
   "__schema": 1,
@@ -34,7 +34,7 @@
     "architecture": "x86",
     "bitness": "64",
     "brands": "Google Chrome/155,Chromium/155,Not(A:Brand/24",
-    "formFactors": "",
+    "formFactors": "Desktop",
     "fullVersionList": "Google Chrome/155.0.8059.39,Chromium/155.0.8059.39,Not(A:Brand/24.0.0.0",
     "mobile": false,
     "model": "",
@@ -44,8 +44,8 @@
     "wow64": false
   },
   "clientRects": {
-    "hash": "1138800d",
-    "rect": "12.259650230407715|7.560130596160889|262.4308776855469|-9999.2705078125|-9987.010857582092|269.99100828170776|-9999.2705078125|262.4308776855469"
+    "hash": "18c63d07",
+    "rect": "12.259765625|7.55950927734375|262.4311828613281|-9999.2705078125|-9987.0107421875|269.9906921386719|-9999.2705078125|262.4311828613281"
   },
   "codecs": {
     "hasProprietaryCodecs": true,
@@ -377,9 +377,9 @@
         "dischargingTime": "Infinity",
         "level": 1
       },
-      "connectionDownlink": 1.75,
+      "connectionDownlink": 1.6,
       "connectionKind": null,
-      "connectionRtt": 150,
+      "connectionRtt": 100,
       "connectionSaveData": false,
       "connectionType": "4g",
       "hasBattery": true,
@@ -394,9 +394,9 @@
       }
     },
     "nativeToString": "hardwareConcurrency:native,userAgent:native,width:native",
-    "performanceNowPrecision": 0.10000002384185792,
+    "performanceNowPrecision": 0,
     "toStringTag": "[object Navigator]",
-    "totalJSHeapSize": 8007977
+    "totalJSHeapSize": 8008314
   },
   "fonts": {
     "baselineWidths": {
@@ -497,7 +497,7 @@
             null,
             null
           ],
-          "t": 789
+          "t": 437
         }
       ]
     },
@@ -600,10 +600,10 @@
     "width": 1920
   },
   "speech": {
-    "count": 180,
-    "defaultVoice": "Милена",
-    "hash": "5079c53b",
-    "names": "Daria|bg-BG|true~Eddy (английский (Великобритания))|en-GB|true~Eddy (английский (Соединенные Штаты Америки))|en-US|true~Eddy (испанский (Испания))|es-ES|true~Eddy (испанский (Мексика))|es-MX|true~Eddy (итальянский (Италия))|it-IT|true~Eddy (китайский (Китай континентальный))|zh-CN|true~Eddy (китайский (Тайвань))|zh-TW|true~Eddy (корейский (Республика Корея))|ko-KR|true~Eddy (немецкий (Германия))|de-DE|true~Eddy (португальский (Бразилия))|pt-BR|true~Eddy (финский (Финляндия))|fi-FI|true~Eddy (французский (Канада))|fr-CA|true~Eddy (французский (Франция))|fr-FR|true~Eddy (японский (Япония))|ja-JP|true~Flo (английский (Великобритания))|en-GB|true~Flo (английский (Соединенные Штаты Америки))|en-US|true~Flo (испанский (Испания))|es-ES|true~Flo (испанский (Мексика))|es-MX|true~Flo (итальянский (Италия))|it-IT|true~Flo (китайский (Китай континентальный))|zh-CN|true~Flo (китайский (Тайвань))|zh-TW|true~Flo (корейский (Республика Корея))|ko-KR|true~Flo (немецкий (Германия))|de-DE|true~Flo (португальский (Бразилия))|pt-BR|true~Flo (финский (Финляндия))|fi-FI|true~Flo (французский (Канада))|fr-CA|true~Flo (французский (Франция))|fr-FR|true~Flo (японский (Япония))|ja-JP|true~Grandma (английский (Великобритания))|en-GB|true~Grandma (английский (Соединенные Штаты Америки))|en-US|true~Grandma (испанский (Испания))|es-ES|true~Grandma (испанский (Мексика))|es-MX|true~Grandma (итальянский (Италия))|it-IT|true~Grandma (китайский (Китай континентальный))|zh-CN|true~Grandma (китайский (Тайвань))|zh-TW|true~Grandma (корейский (Республика Корея))|ko-KR|true~Grandma (немецкий (Германия))|de-DE|true~Grandma (португальский (Бразилия))|pt-BR|true~Grandma (финский (Финляндия))|fi-FI|true~Grandma (французский (Канада))|fr-CA|true~Grandma (французский (Франция))|fr-FR|true~Grandma (японский (Япония))|ja-JP|true~Grandpa (английский (Великобритания))|en-GB|true~Grandpa (английский (Соединенные Штаты Америки))|en-US|true~Grandpa (испанский (Испания))|es-ES|true~Grandpa (испанский (Мексика))|es-MX|true~Grandpa (итальянский (Италия))|it-IT|true~Grandpa (китайский (Китай континентальный))|zh-CN|true~Grandpa (китайский (Тайвань))|zh-TW|true~Grandpa (корейский (Республика Корея))|ko-KR|true~Grandpa (немецкий (Германия))|de-DE|true~Grandpa (португальский (Бразилия))|pt-BR|true~Grandpa (финский (Финляндия))|fi-FI|true~Grandpa (французский (Канада))|fr-CA|true~Grandpa (французский (Франция))|fr-FR|true~Grandpa (японский (Япония))|ja-JP|true~Jacques|fr-FR|true~Reed (английский (Великобритания))|en-GB|true~Reed (английский (Соединенные Штаты Америки))|en-US|true~Reed (испанский (Испания))|es-ES|true~Reed (испанский (Мексика))|es-MX|true~Reed (итальянский (Италия))|it-IT|true~Reed (китайский (Китай континентальный))|zh-CN|true~Reed (китайский (Тайвань))|zh-TW|true~Reed (корейский (Республика Корея))|ko-KR|true~Reed (немецкий (Германия))|de-DE|true~Reed (португальский (Бразилия))|pt-BR|true~Reed (финский (Финляндия))|fi-FI|true~Reed (французский (Канада))|fr-CA|true~Reed (японский (Япония))|ja-JP|true~Rocko (английский (Великобритания))|en-GB|true~Rocko (английский (Соединенные Штаты Америки))|en-US|true~Rocko (испанский (Испания))|es-ES|true~Rocko (испанский (Мексика))|es-MX|true~Rocko (итальянский (Италия))|it-IT|true~Rocko (китайский (Китай континентальный))|zh-CN|true~Rocko (китайский (Тайвань))|zh-TW|true~Rocko (корейский (Республика Корея))|ko-KR|true~Rocko (немецкий (Германия))|de-DE|true~Rocko (португальский (Бразилия))|pt-BR|true~Rocko (финский (Финляндия))|fi-FI|true~Rocko (французский (Канада))|fr-CA|true~Rocko (французский (Франция))|fr-FR|true~Rocko (японский (Япония))|ja-JP|true~Sandy (английский (Великобритания))|en-GB|true~Sandy (английский (Соединенные Штаты Америки))|en-US|true~Sandy (испанский (Испания))|es-ES|true~Sandy (испанский (Мексика))|es-MX|true~Sandy (итальянский (Италия))|it-IT|true~Sandy (китайский (Китай континентальный))|zh-CN|true~Sandy (китайский (Тайвань))|zh-TW|true~Sandy (корейский (Республика Корея))|ko-KR|true~Sandy (немецкий (Германия))|de-DE|true~Sandy (португальский (Бразилия))|pt-BR|true~Sandy (финский (Финляндия))|fi-FI|true~Sandy (французский (Канада))|fr-CA|true~Sandy (французский (Франция))|fr-FR|true~Sandy (японский (Япония))|ja-JP|true~Shelley (английский (Великобритания))|en-GB|true~Shelley (английский (Соединенные Штаты Америки))|en-US|true~Shelley (испанский (Испания))|es-ES|true~Shelley (испанский (Мексика))|es-MX|true~Shelley (итальянский (Италия))|it-IT|true~Shelley (китайский (Китай континентальный))|zh-CN|true~Shelley (китайский (Тайвань))|zh-TW|true~Shelley (корейский (Республика Корея))|ko-KR|true~Shelley (немецкий (Германия))|de-DE|true~Shelley (португальский (Бразилия))|pt-BR|true~Shelley (финский (Финляндия))|fi-FI|true~Shelley (французский (Канада))|fr-CA|true~Shelley (французский (Франция))|fr-FR|true~Shelley (японский (Япония))|ja-JP|true~Zosia|pl-PL|true~Алва|sv-SE|true~Альберт|en-US|true~Амели|fr-CA|true~Амира|ms-MY|true~Анна|de-DE|true~Бах|en-US|true~Вани|ta-IN|true~Виолончель|en-US|true~Воббл|en-US|true~Гита|te-IN|true~Дамаянти|id-ID|true~Джуниор|en-US|true~Дэниэл|en-GB|true~Жуана|pt-PT|true~Зарвокс|en-US|true~Зузана|cs-CZ|true~Иоана|ro-RO|true~Канья|th-TH|true~Карен|en-AU|true~Кармит|he-IL|true~Колокольчик|en-US|true~Ксандер|nl-NL|true~Кэти|en-US|true~Кёко|ja-JP|true~Лана|hr-HR|true~Лаура|sk-SK|true~Леся|uk-UA|true~Леха|hi-IN|true~Линь|vi-VN|true~Лучана|pt-BR|true~Маджед|ar-001|true~Мелина|el-GR|true~Милена|ru-RU|true~Мойра|en-IE|true~Моника|es-ES|true~Монсе|ca-ES|true~Мэй-Цзя|zh-TW|true~Нора|nb-NO|true~Орган|en-US|true~Паулина|es-MX|true~Пия|bn-IN|true~Плохие новости|en-US|true~Прыг-скок|en-US|true~Пузырьки|en-US|true~Ральф|en-US|true~Риши|en-IN|true~Саманта|en-US|true~Сара|da-DK|true~Сату|fi-FI|true~Син-Чжи|yue-HK|true~Соумья|kn-IN|true~Суперзвезда|en-US|true~Тесса|en-ZA|true~Тин-Тин|zh-CN|true~Тина|sl-SI|true~Томас|fr-FR|true~Триноид|en-US|true~Тюнде|hu-HU|true~Фред|en-US|true~Хорошие новости|en-US|true~Шепот|en-US|true~Шутник|en-US|true~Элис|it-IT|true~Эллен|nl-BE|true~Юна|ko-KR|true~Ялда|tr-TR|true"
+    "count": 19,
+    "defaultVoice": "Google Deutsch",
+    "hash": "1a1e3acd",
+    "names": "Google Bahasa Indonesia|id-ID|false~Google Deutsch|de-DE|false~Google Nederlands|nl-NL|false~Google UK English Female|en-GB|false~Google UK English Male|en-GB|false~Google US English|en-US|false~Google español de Estados Unidos|es-US|false~Google español|es-ES|false~Google français|fr-FR|false~Google italiano|it-IT|false~Google polski|pl-PL|false~Google português do Brasil|pt-BR|false~Google русский|ru-RU|false~Google हिन्दी|hi-IN|false~Google 國語（臺灣）|zh-TW|false~Google 日本語|ja-JP|false~Google 한국의|ko-KR|false~Google 普通话（中国大陆）|zh-CN|false~Google 粤語（香港）|zh-HK|false"
   },
   "storage": {
     "cookieEnabled": true,
@@ -697,7 +697,7 @@
     },
     "webgl2": {
       "contextAttributes": "{\"alpha\":true,\"antialias\":true,\"depth\":true,\"desynchronized\":false,\"failIfMajorPerformanceCaveat\":false,\"powerPreference\":\"default\",\"premultipliedAlpha\":true,\"preserveDrawingBuffer\":false,\"stencil\":false,\"xrCompatible\":false}",
-      "extensions": "ANGLE_instanced_arrays,EXT_blend_minmax,EXT_clip_control,EXT_color_buffer_half_float,EXT_depth_clamp,EXT_float_blend,EXT_frag_depth,EXT_polygon_offset_clamp,EXT_sRGB,EXT_shader_texture_lod,EXT_texture_compression_bptc,EXT_texture_compression_rgtc,EXT_texture_filter_anisotropic,EXT_texture_mirror_clamp_to_edge,OES_element_index_uint,OES_fbo_render_mipmap,OES_standard_derivatives,OES_texture_float,OES_texture_float_linear,OES_texture_half_float,OES_texture_half_float_linear,OES_vertex_array_object,WEBGL_blend_func_extended,WEBGL_color_buffer_float,WEBGL_compressed_texture_s3tc,WEBGL_compressed_texture_s3tc_srgb,WEBGL_debug_renderer_info,WEBGL_debug_shaders,WEBGL_depth_texture,WEBGL_draw_buffers,WEBGL_lose_context,WEBGL_multi_draw,WEBGL_polygon_mode",
+      "extensions": "EXT_clip_control,EXT_color_buffer_half_float,EXT_depth_clamp,EXT_float_blend,EXT_polygon_offset_clamp,EXT_texture_compression_bptc,EXT_texture_compression_rgtc,EXT_texture_filter_anisotropic,EXT_texture_mirror_clamp_to_edge,OES_texture_float_linear,WEBGL_blend_func_extended,WEBGL_compressed_texture_s3tc,WEBGL_compressed_texture_s3tc_srgb,WEBGL_debug_renderer_info,WEBGL_debug_shaders,WEBGL_lose_context,WEBGL_multi_draw,WEBGL_polygon_mode",
       "paramTypes": {
         "ALIASED_LINE_WIDTH_RANGE": "Float32Array",
         "ALIASED_POINT_SIZE_RANGE": "Float32Array",
