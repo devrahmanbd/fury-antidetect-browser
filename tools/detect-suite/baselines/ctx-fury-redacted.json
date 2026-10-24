@@ -1,5 +1,5 @@
 {
-  "__collectedInMs": 4230,
+  "__collectedInMs": 4434,
   "__probeVersion": "0.3.0",
   "__redacted": true,
   "__schema": 1,
@@ -44,8 +44,8 @@
     "wow64": false
   },
   "clientRects": {
-    "hash": "18c63d07",
-    "rect": "12.259765625|7.55950927734375|262.4311828613281|-9999.2705078125|-9987.0107421875|269.9906921386719|-9999.2705078125|262.4311828613281"
+    "hash": "676f766f",
+    "rect": "12.267578125|7.56884765625|262.430419921875|-9999.2705078125|-9987.0029296875|269.999267578125|-9999.2705078125|262.430419921875"
   },
   "codecs": {
     "hasProprietaryCodecs": true,
@@ -116,11 +116,11 @@
       "userAgent": null
     },
     "iframe:about:blank": {
-      "availHeight": 1032,
+      "availHeight": 833,
       "calendar": "gregory",
       "canvasHash": "2e3c382e",
       "deviceMemory": 16,
-      "devicePixelRatio": 1,
+      "devicePixelRatio": 2,
       "hardwareConcurrency": 12,
       "language": "en-US",
       "languages": "en-US,en",
@@ -129,8 +129,8 @@
       "nativeToString": "native",
       "numberFormat": "123,456.789",
       "platform": "Win32",
-      "screenHeight": 1080,
-      "screenWidth": 1920,
+      "screenHeight": 956,
+      "screenWidth": 1470,
       "timezone": "America/New_York",
       "timezoneOffset": 240,
       "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36",
@@ -138,11 +138,11 @@
       "webglUnmasked": "Google Inc. (NVIDIA) :: ANGLE (NVIDIA, NVIDIA GeForce RTX 4060 (0x00002882) Direct3D11 vs_5_0 ps_5_0, D3D11)"
     },
     "iframe:cross-origin": {
-      "availHeight": 1032,
+      "availHeight": 833,
       "calendar": "gregory",
       "canvasHash": "2e3c382e",
       "deviceMemory": 16,
-      "devicePixelRatio": 1,
+      "devicePixelRatio": 2,
       "hardwareConcurrency": 12,
       "language": "en-US",
       "languages": "en-US,en",
@@ -151,8 +151,8 @@
       "nativeToString": "native",
       "numberFormat": "123,456.789",
       "platform": "Win32",
-      "screenHeight": 1080,
-      "screenWidth": 1920,
+      "screenHeight": 956,
+      "screenWidth": 1470,
       "timezone": "America/New_York",
       "timezoneOffset": 240,
       "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36",
@@ -160,11 +160,11 @@
       "webglUnmasked": "Google Inc. (NVIDIA) :: ANGLE (NVIDIA, NVIDIA GeForce RTX 4060 (0x00002882) Direct3D11 vs_5_0 ps_5_0, D3D11)"
     },
     "iframe:same-origin": {
-      "availHeight": 1032,
+      "availHeight": 833,
       "calendar": "gregory",
       "canvasHash": "2e3c382e",
       "deviceMemory": 16,
-      "devicePixelRatio": 1,
+      "devicePixelRatio": 2,
       "hardwareConcurrency": 12,
       "language": "en-US",
       "languages": "en-US,en",
@@ -173,8 +173,8 @@
       "nativeToString": "native",
       "numberFormat": "123,456.789",
       "platform": "Win32",
-      "screenHeight": 1080,
-      "screenWidth": 1920,
+      "screenHeight": 956,
+      "screenWidth": 1470,
       "timezone": "America/New_York",
       "timezoneOffset": 240,
       "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36",
@@ -182,11 +182,11 @@
       "webglUnmasked": "Google Inc. (NVIDIA) :: ANGLE (NVIDIA, NVIDIA GeForce RTX 4060 (0x00002882) Direct3D11 vs_5_0 ps_5_0, D3D11)"
     },
     "iframe:srcdoc": {
-      "availHeight": 1032,
+      "availHeight": 833,
       "calendar": "gregory",
       "canvasHash": "2e3c382e",
       "deviceMemory": 16,
-      "devicePixelRatio": 1,
+      "devicePixelRatio": 2,
       "hardwareConcurrency": 12,
       "language": "en-US",
       "languages": "en-US,en",
@@ -195,8 +195,8 @@
       "nativeToString": "native",
       "numberFormat": "123,456.789",
       "platform": "Win32",
-      "screenHeight": 1080,
-      "screenWidth": 1920,
+      "screenHeight": 956,
+      "screenWidth": 1470,
       "timezone": "America/New_York",
       "timezoneOffset": 240,
       "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36",
@@ -204,11 +204,11 @@
       "webglUnmasked": "Google Inc. (NVIDIA) :: ANGLE (NVIDIA, NVIDIA GeForce RTX 4060 (0x00002882) Direct3D11 vs_5_0 ps_5_0, D3D11)"
     },
     "main": {
-      "availHeight": 1032,
+      "availHeight": 833,
       "calendar": "gregory",
       "canvasHash": "2e3c382e",
       "deviceMemory": 16,
-      "devicePixelRatio": 1,
+      "devicePixelRatio": 2,
       "hardwareConcurrency": 12,
       "language": "en-US",
       "languages": "en-US,en",
@@ -217,8 +217,8 @@
       "nativeToString": "native",
       "numberFormat": "123,456.789",
       "platform": "Win32",
-      "screenHeight": 1080,
-      "screenWidth": 1920,
+      "screenHeight": 956,
+      "screenWidth": 1470,
       "timezone": "America/New_York",
       "timezoneOffset": 240,
       "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36",
@@ -377,7 +377,7 @@
         "dischargingTime": "Infinity",
         "level": 1
       },
-      "connectionDownlink": 1.6,
+      "connectionDownlink": 1.5,
       "connectionKind": null,
       "connectionRtt": 100,
       "connectionSaveData": false,
@@ -396,7 +396,7 @@
     "nativeToString": "hardwareConcurrency:native,userAgent:native,width:native",
     "performanceNowPrecision": 0,
     "toStringTag": "[object Navigator]",
-    "totalJSHeapSize": 8008314
+    "totalJSHeapSize": 8252075
   },
   "fonts": {
     "baselineWidths": {
@@ -497,7 +497,7 @@
             null,
             null
           ],
-          "t": 437
+          "t": 792
         }
       ]
     },
@@ -576,15 +576,15 @@
     }
   },
   "screen": {
-    "availHeight": 1032,
+    "availHeight": 833,
     "availLeft": 0,
-    "availTop": 0,
-    "availWidth": 1920,
+    "availTop": 33,
+    "availWidth": 1470,
     "chromeHeight": 139,
     "chromeWidth": 0,
     "colorDepth": 24,
-    "devicePixelRatio": 1,
-    "height": 1080,
+    "devicePixelRatio": 2,
+    "height": 956,
     "innerHeight": 702,
     "innerWidth": 1200,
     "orientationAngle": 0,
@@ -597,7 +597,7 @@
     "scrollbarWidth": 15,
     "visualViewportScale": 1,
     "visualViewportWidth": 1200,
-    "width": 1920
+    "width": 1470
   },
   "speech": {
     "count": 19,
