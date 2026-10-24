@@ -42,8 +42,8 @@ export function DatePicker({
   "aria-label"?: string;
 }) {
   const { t, resolved } = useI18n();
-  const locale = resolved === "ru" ? "ru-RU" : "en-US";
-  const weekStart = resolved === "ru" ? 1 : 0;
+  const locale = resolved === "ru" ? "ru-RU" : resolved === "zh" ? "zh-CN" : "en-US";
+  const weekStart = resolved === "en" ? 0 : 1;
   const chosen = parse(value);
   const [open, setOpen] = useState(false);
   // The day the keyboard is on; the month shown is the one it is in.

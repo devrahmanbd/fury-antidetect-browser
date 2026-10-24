@@ -114,7 +114,7 @@ export function Settings({
                       aria-pressed={language === l}
                       onClick={() => setLanguage(l as Language)}
                     >
-                      {l === "system" ? t("set.langSystem") : l === "ru" ? "Русский" : "English"}
+                      {l === "system" ? t("set.langSystem") : l === "ru" ? "Русский" : l === "zh" ? "简体中文" : "English"}
                     </button>
                   ))}
                 </div>
