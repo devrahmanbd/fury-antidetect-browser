@@ -285,15 +285,17 @@ async fn cmd_launch(args: &[String]) -> anyhow::Result<()> {
         );
     }
     let mut config = persona.derive_core_config(seed, &ctx);
-    // The canvas mode a profile picks in its Advanced tab, for measuring the
-    // two side by side from a terminal.
-    if args.iter().any(|a| a == "--real-canvas") {
-        fury_shared::overrides::MachineOverrides {
-            canvas: Some(fury_shared::overrides::CanvasMode::Real),
-            ..Default::default()
-        }
-        .apply_config(&mut config);
+    // What a profile with nothing pinned launches with (the monitor's own
+    // screen), plus the canvas mode a profile picks in its Advanced tab, for
+    // measuring the two side by side from a terminal.
+    fury_shared::overrides::MachineOverrides {
+        canvas: args
+            .iter()
+            .any(|a| a == "--real-canvas")
+            .then_some(fury_shared::overrides::CanvasMode::Real),
+        ..Default::default()
     }
+    .apply_config(&mut config);
 
     // The installed core is the last resort and it was missing entirely: this
     // took --core or FURY_CORE and nothing else, so on a machine where

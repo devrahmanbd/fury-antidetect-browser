@@ -597,6 +597,7 @@ const en = {
   "pd.msIntro":
     "Each field is optional: empty keeps what the machine has. Only values this machine's OS actually reports are offered, and the result is checked as a whole — the panel on the right shows what it adds up to, and Save stays off while it describes a machine that cannot exist.",
   "pd.asMachine": "As the machine has it ({v})",
+  "pd.asMonitor": "This computer's monitor",
   "pd.followExit": "Follow the proxy exit",
   "pd.uiLocale": "Browser language",
   "pd.uiLocaleHint":
@@ -605,7 +606,7 @@ const en = {
   "pd.screen": "Screen",
   "pd.dpr": "Scale",
   "pd.screenHint":
-    "In logical pixels. The taskbar or menu bar this machine was measured with is kept. Some sizes have no whole number of physical pixels at some scales (1366 at 125%), and those are refused because no panel has them.",
+    "By default the profile reports the monitor it runs on: size, usable area and scale. Checkers flag a screen that is not the real one (demo.fingerprint.com did, for every other size). Pick a size only if you need one; it is in logical pixels, keeps the taskbar or menu bar this machine was measured with, and sizes with no whole number of physical pixels at a scale (1366 at 125%) are refused.",
   "pd.cores": "CPU cores",
   "pd.memory": "Memory, GB",
   "pd.memoryHint": "What navigator.deviceMemory reports. The JS heap limit follows it.",
@@ -691,6 +692,8 @@ const en = {
   "pd.ovChrome": "Chrome",
   "pd.ovFollowsExit": "the proxy's exit at launch — {tz} by the last check",
   "pd.ovScreenDetail": "usable {avail} · ×{dpr} · {depth}-bit",
+  "pd.ovScreenMonitor": "this computer's monitor",
+  "pd.ovScreenDepth": "· {depth}-bit",
   "pd.ovWebglExt": "{n} WebGL extensions",
   "pd.ovWebgpu": "WebGPU",
   "pd.ovFollowsHost": "not in this persona — follows the host machine",
@@ -1796,6 +1799,7 @@ const ru: Record<Key, string> = {
   "pd.msIntro":
     "Каждое поле необязательно: пустое оставляет то, что у машины. В списках только значения, которые эта ОС реально отдаёт, а результат проверяется целиком. Справа видно, что получилось, и «Сохранить» не нажмётся, пока такая машина не может существовать.",
   "pd.asMachine": "Как у машины ({v})",
+  "pd.asMonitor": "Монитор этого компьютера",
   "pd.followExit": "По выходу прокси",
   "pd.uiLocale": "Язык браузера",
   "pd.uiLocaleHint":
@@ -1804,7 +1808,7 @@ const ru: Record<Key, string> = {
   "pd.screen": "Экран",
   "pd.dpr": "Масштаб",
   "pd.screenHint":
-    "В логических пикселях. Панель задач или строка меню остаются такими, какими их замерили на этой машине. Некоторые размеры при некотором масштабе не дают целого числа физических пикселей (1366 при 125%), и такие отклоняются: у мониторов таких нет.",
+    "По умолчанию профиль сообщает монитор, на котором запущен: размер, доступную область и масштаб. Проверки замечают экран, который не совпадает с настоящим (demo.fingerprint.com помечал любой другой размер). Выбирайте размер, только если он нужен: он в логических пикселях, панель задач или строка меню остаются как у замеренной машины, а размеры без целого числа физических пикселей при выбранном масштабе (1366 при 125%) отклоняются.",
   "pd.cores": "Ядра процессора",
   "pd.memory": "Память, ГБ",
   "pd.memoryHint": "То, что отдаёт navigator.deviceMemory. Лимит памяти JS подстраивается сам.",
@@ -1890,6 +1894,8 @@ const ru: Record<Key, string> = {
   "err.reseedTeam": "Отпечаток командного профиля хранится на сервере, и отсюда его пока не сменить.",
   "pd.ovChrome": "Chrome",
   "pd.ovScreenDetail": "доступно {avail} · ×{dpr} · {depth} бит",
+  "pd.ovScreenMonitor": "монитор этого компьютера",
+  "pd.ovScreenDepth": "· {depth} бит",
   "pd.ovWebglExt": "расширений WebGL: {n}",
   "pd.ovWebgpu": "WebGPU",
   "pd.ovFollowsHost": "в персоне нет — как у машины хоста",

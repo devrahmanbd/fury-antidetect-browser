@@ -947,14 +947,12 @@ export function ProfileDialog({
                           });
                         }}
                       >
-                        <option value="">
-                          {t("pd.asMachine", { v: preview?.base ? preview.base.screen.join("×") : "…" })}
-                        </option>
+                        <option value="">{t("pd.asMonitor")}</option>
                         {(preview?.options?.screens ?? []).map(([w, h]) => (
                           <option key={`${w}x${h}`} value={`${w}x${h}`}>{w}×{h}</option>
                         ))}
                       </Select>
-                      <Select
+                      {overrides.screen && <Select
                         aria-label={t("pd.dpr")}
                         title={t("pd.dpr")}
                         value={overrides.screen?.device_pixel_ratio ?? preview?.base?.device_pixel_ratio ?? 1}
@@ -969,7 +967,7 @@ export function ProfileDialog({
                         {(preview?.options?.device_pixel_ratios ?? [1]).map((d) => (
                           <option key={d} value={d}>{Math.round(d * 100)}%</option>
                         ))}
-                      </Select>
+                      </Select>}
                     </div>
                     <p className="hint">{t("pd.screenHint")}</p>
                   </div>
@@ -1078,9 +1076,11 @@ export function ProfileDialog({
                   <dd className="small">{preview.client_hints}</dd>
                   <dt>{t("pd.ovScreen")}</dt>
                   <dd>
-                    {preview.screen}
+                    {preview.screen ?? t("pd.ovScreenMonitor")}
                     <span className="muted small">
-                      {" "}{t("pd.ovScreenDetail", { avail: preview.avail, dpr: preview.device_pixel_ratio, depth: preview.color_depth })}
+                      {" "}{preview.screen
+                        ? t("pd.ovScreenDetail", { avail: preview.avail ?? "", dpr: preview.device_pixel_ratio ?? "", depth: preview.color_depth })
+                        : t("pd.ovScreenDepth", { depth: preview.color_depth })}
                     </span>
                   </dd>
                   <dt>{t("pd.ovGpu")}</dt>

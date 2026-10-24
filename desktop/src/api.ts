@@ -370,14 +370,15 @@ export interface Preview {
   timezone: string;
   hardware_concurrency: number;
   device_memory: number;
-  screen: string;
+  /** null when the profile reports the monitor it runs on (no screen pinned). */
+  screen: string | null;
   gpu_vendor: string;
   gpu_renderer: string;
   client_hints_platform: string;
   chrome_version: string;
   client_hints: string;
-  avail: string;
-  device_pixel_ratio: number;
+  avail: string | null;
+  device_pixel_ratio: number | null;
   color_depth: number;
   max_touch_points: number;
   /** null when the persona has no WebGPU adapter data. */

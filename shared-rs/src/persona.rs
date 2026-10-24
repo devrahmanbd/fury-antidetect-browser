@@ -460,10 +460,22 @@ impl Persona {
             },
             // Independent streams per vector: adding a new noised surface later
             // must not shift the canvas fingerprint of existing profiles.
+            //
+            // No clientRectsSeed: element and text measurements are the
+            // machine's own. Patch 0033 moves text edges by whole layout units,
+            // and that is still visible -- the same text measures a different
+            // width at a different sub-pixel position, and stops matching
+            // canvas measureText(), neither of which a real Chrome does.
+            // demo.fingerprint.com scored a Windows profile 0.24 with that
+            // seed alone and 0.88 with canvas and audio beside it, against
+            // 0.06 for canvas and audio without it (build box, 24.10.2026).
+            // Text widths are the fonts', which every machine of a family
+            // shares, so leaving them real costs little. The marker tells the
+            // launch check the absence was meant.
             "noise": {
                 "canvasSeed": sub_seed(seed, "canvas"),
                 "audioSeed": sub_seed(seed, "audio"),
-                "clientRectsSeed": sub_seed(seed, "clientRects"),
+                "clientRects": "real",
                 "deviceIdSalt": sub_seed(seed, "deviceId"),
             },
         });
@@ -1211,6 +1223,20 @@ mod tests {
             let derived = load(name).derive_core_config(1, &ctx());
             crate::fingerprint::check_core_config(&derived)
                 .unwrap_or_else(|missing| panic!("persona {name}:\n  {}", missing.join("\n  ")));
+        }
+    }
+
+    #[test]
+    fn text_measurements_are_the_machines_own() {
+        // No seed for patch 0033, and a marker the launch check accepts in its
+        // place (see the note in derive_core_config).
+        for name in ["macos-15-m-series-1728x1117", "windows-11-rtx4060-1920x1080"] {
+            let c = load(name).derive_core_config(1, &ctx());
+            assert!(c["noise"].get("clientRectsSeed").is_none(), "{name}");
+            assert_eq!(c["noise"]["clientRects"], "real", "{name}");
+            let mut forgot = c.clone();
+            forgot["noise"].as_object_mut().unwrap().remove("clientRects");
+            assert!(crate::fingerprint::check_core_config(&forgot).is_err(), "{name}: a missing seed went unnoticed");
         }
     }
 

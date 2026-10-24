@@ -2011,6 +2011,7 @@ impl Agent {
                         .cloned()
                         .unwrap_or(serde_json::Value::Null)
                 };
+                let real_screen = get("screen.size").as_str() == Some("real");
 
                 // The raw value is what sites read and stays as it is; on
                 // Windows it is not the release (7.0.0 is Windows 10 1809),
@@ -2039,11 +2040,14 @@ impl Agent {
                     "timezone": get("locale.timezone"),
                     "hardware_concurrency": get("navigator.hardwareConcurrency"),
                     "device_memory": get("navigator.deviceMemory"),
-                    "screen": format!(
+                    // Null when the profile reports the monitor it runs on
+                    // (overrides::MONITOR_KEYS): the panel says so instead of
+                    // showing the persona's size, which nothing reports.
+                    "screen": (!real_screen).then(|| format!(
                         "{}×{}",
                         get("screen.width").as_i64().unwrap_or(0),
                         get("screen.height").as_i64().unwrap_or(0)
-                    ),
+                    )),
                     "gpu_vendor": get("gpu.webglParams.UNMASKED_VENDOR_WEBGL"),
                     "gpu_renderer": get("gpu.webglParams.UNMASKED_RENDERER_WEBGL"),
                     "client_hints_platform": get("clientHints.platform"),
@@ -2054,11 +2058,11 @@ impl Agent {
                     // audit of 12.09.2026).
                     "chrome_version": get("clientHints.fullVersion"),
                     "client_hints": client_hints,
-                    "avail": format!(
+                    "avail": (!real_screen).then(|| format!(
                         "{}×{}",
                         get("screen.availWidth").as_i64().unwrap_or(0),
                         get("screen.availHeight").as_i64().unwrap_or(0)
-                    ),
+                    )),
                     "device_pixel_ratio": get("screen.devicePixelRatio"),
                     "color_depth": get("screen.colorDepth"),
                     "max_touch_points": get("navigator.maxTouchPoints"),

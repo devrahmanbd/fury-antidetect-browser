@@ -633,11 +633,19 @@ pub fn check_core_config(config: &serde_json::Value) -> Result<(), Vec<String>> 
     // out -- that is how the core is told not to noise. The marker is what
     // tells this check that the absence was meant (overrides::CanvasMode).
     let real_canvas = lookup(config, "noise.canvas").and_then(|v| v.as_str()) == Some("real");
+    // The same for text measurements (persona.rs, derive_core_config) and for
+    // the monitor itself (overrides::MachineOverrides::apply_config).
+    let real_rects = lookup(config, "noise.clientRects").and_then(|v| v.as_str()) == Some("real");
+    let real_screen = lookup(config, "screen.size").and_then(|v| v.as_str()) == Some("real");
 
     let missing: Vec<String> = CORE_CONFIG_KEYS
         .iter()
         .filter(|path| !skipped.contains(path))
         .filter(|path| !(real_canvas && **path == "noise.canvasSeed"))
+        .filter(|path| !(real_rects && **path == "noise.clientRectsSeed"))
+        .filter(|path| {
+            !(real_screen && crate::overrides::MONITOR_KEYS.iter().any(|k| path.strip_prefix("screen.") == Some(*k)))
+        })
         .filter(|path| match path.strip_suffix('.') {
             // A prefix the core completes at runtime: what must be there is an
             // object with something in it. An empty one reads exactly like a

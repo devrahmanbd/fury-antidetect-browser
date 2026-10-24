@@ -82,6 +82,28 @@ pub enum CanvasMode {
 /// it from one that forgot the seed. The core never reads it.
 pub const REAL_CANVAS_MARKER: &str = "canvas";
 
+/// What a desktop profile takes from the monitor it runs on unless the
+/// profile pins a screen: the size, the usable area and its offset, and the
+/// pixel density. Left out of the config, patch 0020 reports the real ones.
+///
+/// The persona's size used to win, and demo.fingerprint.com flagged every
+/// screen that was not the real one -- 1920x1080, 1280x1024, even the real
+/// 1024x768 with a usable height of 728 instead of 768 -- while the exact real
+/// size passed, on fresh seeds and on visitors it had never seen (build box,
+/// 24.10.2026). How it learns the real size was not found: every getter,
+/// media query, iframe and <picture> on the page answered with the persona's.
+/// The real monitor is also what a crowd has; a 1920x1080 is not a lead.
+///
+/// The rest of `screen` stays the persona's: colour depth, the window chrome
+/// and the scrollbar are the OS's, not the monitor's. A phone or tablet keeps
+/// its whole screen, which is the model (patches 0130-0134 lay the page out
+/// from it).
+pub const MONITOR_KEYS: &[&str] =
+    &["width", "height", "availWidth", "availHeight", "availLeft", "availTop", "devicePixelRatio"];
+
+/// Marks a config whose screen is the monitor's on purpose; see `MONITOR_KEYS`.
+pub const REAL_SCREEN_MARKER: &str = "size";
+
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct ScreenOverride {
     pub width: u32,
@@ -198,14 +220,29 @@ impl MachineOverrides {
     }
 
     /// The pins that live in the core config itself rather than in the
-    /// persona or the context. Today only the canvas mode: real means no canvas
-    /// seed, which is how patches 0030 and 0031 are told to leave readback
-    /// alone, plus a marker saying it was meant.
+    /// persona or the context.
+    ///
+    /// The canvas mode: real means no canvas seed, which is how patches 0030
+    /// and 0031 are told to leave readback alone, plus a marker saying it was
+    /// meant.
+    ///
+    /// The screen: a desktop profile that pins none reports the monitor it runs
+    /// on (see `MONITOR_KEYS`). A pinned one is already in the config, since
+    /// `apply` put it into the persona the config was derived from.
     pub fn apply_config(&self, config: &mut serde_json::Value) {
         if self.canvas == Some(CanvasMode::Real) {
             if let Some(noise) = config.get_mut("noise").and_then(|n| n.as_object_mut()) {
                 noise.remove("canvasSeed");
                 noise.insert(REAL_CANVAS_MARKER.into(), serde_json::json!("real"));
+            }
+        }
+        let handset = config.get("mobile").is_some_and(|m| !m.is_null());
+        if self.screen.is_none() && !handset {
+            if let Some(screen) = config.get_mut("screen").and_then(|s| s.as_object_mut()) {
+                for key in MONITOR_KEYS {
+                    screen.remove(*key);
+                }
+                screen.insert(REAL_SCREEN_MARKER.into(), serde_json::json!("real"));
             }
         }
     }
@@ -427,6 +464,46 @@ mod tests {
             serde_json::to_string(&MachineOverrides { canvas: Some(CanvasMode::Real), ..Default::default() }).unwrap(),
             r#"{"canvas":"real"}"#
         );
+    }
+
+    #[test]
+    fn a_desktop_reports_its_monitor_unless_it_pins_a_screen() {
+        use crate::persona::ProfileContext;
+        let ctx = ProfileContext {
+            timezone: "Europe/Berlin".into(),
+            languages: vec!["en-US".into()],
+            ui_locale: "en-US".into(),
+            geolocation: None,
+            chrome_major: 155,
+            chrome_full_version: "155.0.8059.39".into(),
+        };
+        let all = catalogue::all();
+        let win = persona("win11-rtx4060-1920x1080");
+
+        let mut c = win.derive_core_config(1, &ctx);
+        MachineOverrides::default().apply_config(&mut c);
+        for key in MONITOR_KEYS {
+            assert!(c["screen"].get(*key).is_none(), "{key} is still the persona's");
+        }
+        assert_eq!(c["screen"]["size"], "real");
+        // The OS's part of the screen stays.
+        assert_eq!(c["screen"]["colorDepth"], win.screen.color_depth);
+        assert!(c["screen"].get("chromeHeightDelta").is_some());
+        crate::fingerprint::check_core_config(&c).unwrap_or_else(|m| panic!("{}", m.join("\n")));
+
+        let pin = MachineOverrides {
+            screen: Some(ScreenOverride { width: 2560, height: 1440, device_pixel_ratio: 1.0 }),
+            ..Default::default()
+        };
+        let mut c = pin.apply(&win, &all).unwrap().derive_core_config(1, &ctx);
+        pin.apply_config(&mut c);
+        assert_eq!(c["screen"]["width"], 2560);
+        assert!(c["screen"].get("size").is_none());
+
+        // A handset's screen is the model and stays.
+        let mut phone = serde_json::json!({ "mobile": { "enabled": true }, "screen": { "width": 412, "height": 915 } });
+        MachineOverrides::default().apply_config(&mut phone);
+        assert_eq!(phone["screen"]["width"], 412);
     }
 
     #[test]
