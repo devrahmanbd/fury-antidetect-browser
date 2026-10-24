@@ -593,38 +593,42 @@ index 8a9acc6dc7..70105b052a 100644
    }
    return scalar_value;
 diff --git a/third_party/blink/renderer/core/frame/local_dom_window.cc b/third_party/blink/renderer/core/frame/local_dom_window.cc
-index f880e3b374..eac39b0c46 100644
+index faf300e09b..e6bdc4e630 100644
 --- a/third_party/blink/renderer/core/frame/local_dom_window.cc
 +++ b/third_party/blink/renderer/core/frame/local_dom_window.cc
-@@ -1702,6 +1702,15 @@ int LocalDOMWindow::outerHeight() const {
-   // the page. So the real viewport is kept and only the chrome is described.
-   // The window stays freely resizable and the delta stays correct at any size.
-   if (const fury::FuryConfig* config = fury::FuryConfig::Get()) {
-+    // Patch 0131: a phone's window is its screen. innerHeight here is in
-+    // layout pixels, which a page without <meta viewport> zooms out to 980
-+    // wide, so inner + chrome would give a phone 1825 pixels of window on an
-+    // 832-pixel screen (measured on verify-0131's bare page).
-+    if (config->GetBool("mobile.enabled").value_or(false)) {
-+      if (std::optional<int> height = config->GetInt("screen.height")) {
-+        return *height;
-+      }
+@@ -1697,6 +1697,17 @@ int LocalDOMWindow::outerHeight() const {
+   // window that is the page's viewport plus the persona's chrome
+   // (RenderWidgetHostImpl::FuryWindowScreenRect), and RootWindowRect below is
+   // that window.
++  //
++  // Patch 0131: a phone's window is its screen. innerHeight here is in layout
++  // pixels, which a page without <meta viewport> zooms out to 980 wide, so
++  // inner + chrome would give a phone 1825 pixels of window on an 832-pixel
++  // screen (measured on verify-0131's bare page).
++  if (const fury::FuryConfig* config = fury::FuryConfig::Get();
++      config && config->GetBool("mobile.enabled").value_or(false)) {
++    if (std::optional<int> height = config->GetInt("screen.height")) {
++      return *height;
 +    }
-     if (std::optional<int> delta = config->GetInt("screen.chromeHeightDelta")) {
-       if (*delta >= 0) {
-         return innerHeight() + *delta;
-@@ -1746,6 +1755,12 @@ int LocalDOMWindow::outerWidth() const {
-   // On both Windows and macOS this delta is 0 for a normal window, but it is
-   // configurable rather than assumed.
-   if (const fury::FuryConfig* config = fury::FuryConfig::Get()) {
-+    // Patch 0131: see outerHeight.
-+    if (config->GetBool("mobile.enabled").value_or(false)) {
-+      if (std::optional<int> width = config->GetInt("screen.width")) {
-+        return *width;
-+      }
++  }
+ 
+   if (page->GetSettings().GetReportScreenSizeInPhysicalPixelsQuirk()) {
+     return static_cast<int>(
+@@ -1732,6 +1743,14 @@ int LocalDOMWindow::outerWidth() const {
+   ChromeClient& chrome_client = page->GetChromeClient();
+ 
+   // Patch 0020: the chrome is the browser's to describe, as in outerHeight.
++  // Patch 0131: see outerHeight.
++  if (const fury::FuryConfig* config = fury::FuryConfig::Get();
++      config && config->GetBool("mobile.enabled").value_or(false)) {
++    if (std::optional<int> width = config->GetInt("screen.width")) {
++      return *width;
 +    }
-     if (std::optional<int> delta = config->GetInt("screen.chromeWidthDelta")) {
-       if (*delta >= 0) {
-         return innerWidth() + *delta;
++  }
++
+   if (page->GetSettings().GetReportScreenSizeInPhysicalPixelsQuirk()) {
+     return static_cast<int>(
+         lroundf(chrome_client.RootWindowRect(*frame).width() *
 diff --git a/third_party/blink/renderer/core/frame/screen.cc b/third_party/blink/renderer/core/frame/screen.cc
 index b439c025e8..0c6c6f472a 100644
 --- a/third_party/blink/renderer/core/frame/screen.cc

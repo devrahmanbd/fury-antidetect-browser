@@ -80,7 +80,7 @@ index 0d60244742..c7b239cac0 100644
        frame->GetPage()->GetChromeClient().GetScreenInfo(*frame);
    if (screen_info.is_monochrome) {
 diff --git a/third_party/blink/renderer/core/frame/local_dom_window.cc b/third_party/blink/renderer/core/frame/local_dom_window.cc
-index 74cc1c0b51..d17ae8ba29 100644
+index 0269587971..faf300e09b 100644
 --- a/third_party/blink/renderer/core/frame/local_dom_window.cc
 +++ b/third_party/blink/renderer/core/frame/local_dom_window.cc
 @@ -26,6 +26,8 @@
@@ -92,54 +92,33 @@ index 74cc1c0b51..d17ae8ba29 100644
  #include <memory>
  #include <optional>
  #include <utility>
-@@ -1683,6 +1685,27 @@ int LocalDOMWindow::outerHeight() const {
+@@ -1686,6 +1688,16 @@ int LocalDOMWindow::outerHeight() const {
    }
  
    ChromeClient& chrome_client = page->GetChromeClient();
 +
-+  // outerHeight is derived from the REAL innerHeight plus a configured chrome
-+  // height, rather than being set outright.
-+  //
-+  // The difference outerHeight - innerHeight is the height of the browser
-+  // chrome, and it differs between Windows and macOS — which is why phase 0
-+  // measured 143 px on our clean build against 87 px on real Chrome. It has to
-+  // match the claimed OS.
-+  //
-+  // But innerHeight is the actual viewport: page layout depends on it, and
-+  // faking it would break rendering and contradict every element measurement on
-+  // the page. So the real viewport is kept and only the chrome is described.
-+  // The window stays freely resizable and the delta stays correct at any size.
-+  if (const fury::FuryConfig* config = fury::FuryConfig::Get()) {
-+    if (std::optional<int> delta = config->GetInt("screen.chromeHeightDelta")) {
-+      if (*delta >= 0) {
-+        return innerHeight() + *delta;
-+      }
-+    }
-+  }
++  // Patch 0020: outerHeight - innerHeight is the height of the browser chrome,
++  // and it differs between Windows and macOS (phase 0 measured 143 px on our
++  // clean build against 87 px on real Chrome), so it has to match the claimed
++  // OS. innerHeight stays the real viewport, which layout depends on, and only
++  // the chrome is described: the browser tells every frame of the page a
++  // window that is the page's viewport plus the persona's chrome
++  // (RenderWidgetHostImpl::FuryWindowScreenRect), and RootWindowRect below is
++  // that window.
 +
    if (page->GetSettings().GetReportScreenSizeInPhysicalPixelsQuirk()) {
      return static_cast<int>(
          lroundf(chrome_client.RootWindowRect(*frame).height() *
-@@ -1715,6 +1738,18 @@ int LocalDOMWindow::outerWidth() const {
+@@ -1718,6 +1730,8 @@ int LocalDOMWindow::outerWidth() const {
    }
  
    ChromeClient& chrome_client = page->GetChromeClient();
 +
-+  // Same reasoning as outerHeight: describe the chrome, keep the real viewport.
-+  // On both Windows and macOS this delta is 0 for a normal window, but it is
-+  // configurable rather than assumed.
-+  if (const fury::FuryConfig* config = fury::FuryConfig::Get()) {
-+    if (std::optional<int> delta = config->GetInt("screen.chromeWidthDelta")) {
-+      if (*delta >= 0) {
-+        return innerWidth() + *delta;
-+      }
-+    }
-+  }
-+
++  // Patch 0020: the chrome is the browser's to describe, as in outerHeight.
    if (page->GetSettings().GetReportScreenSizeInPhysicalPixelsQuirk()) {
      return static_cast<int>(
          lroundf(chrome_client.RootWindowRect(*frame).width() *
-@@ -1936,6 +1971,15 @@ double LocalDOMWindow::devicePixelRatio() const {
+@@ -1939,6 +1953,15 @@ double LocalDOMWindow::devicePixelRatio() const {
      return 0.0;
    }
  
@@ -257,3 +236,124 @@ index c885f53917..41872d60fd 100644
    return IsMainThread()
               ? GetFrame()->DevicePixelRatio()
               : PaintWorkletProxyClient::From(Clients())->DevicePixelRatio();
+diff --git a/content/browser/renderer_host/render_widget_host_impl.h b/content/browser/renderer_host/render_widget_host_impl.h
+index f6d6eb3d1a..1723de4a41 100644
+--- a/content/browser/renderer_host/render_widget_host_impl.h
++++ b/content/browser/renderer_host/render_widget_host_impl.h
+@@ -739,6 +739,10 @@ class CONTENT_EXPORT RenderWidgetHostImpl
+   // Update the renderer's cache of the screen rect of the view and window.
+   void SendScreenRects();
+ 
++  // Fury patch 0020: the window rect a page is told, which is the top-level
++  // page's viewport plus the persona's chrome (see the definition).
++  gfx::Rect FuryWindowScreenRect();
++
+   // Indicates whether the renderer drives the RenderWidgetHosts's size or the
+   // other way around.
+   bool auto_resize_enabled() { return auto_resize_enabled_; }
+diff --git a/content/browser/renderer_host/render_widget_host_impl.cc b/content/browser/renderer_host/render_widget_host_impl.cc
+index 043cc52282..aac5e3a799 100644
+--- a/content/browser/renderer_host/render_widget_host_impl.cc
++++ b/content/browser/renderer_host/render_widget_host_impl.cc
+@@ -45,6 +45,7 @@
+ #include "cc/input/browser_controls_offset_tag_modifications.h"
+ #include "cc/trees/browser_controls_params.h"
+ #include "cc/trees/render_frame_metadata.h"
++#include "components/fury/fury_config.h"
+ #include "components/input/dispatch_to_renderer_callback.h"
+ #include "components/input/features.h"
+ #include "components/input/input_constants.h"
+@@ -692,12 +693,12 @@ void RenderWidgetHostImpl::SendScreenRects() {
+   }
+ 
+   if (last_view_screen_rect_ == view_->GetViewBoundsWithoutTransform() &&
+-      last_window_screen_rect_ == view_->GetBoundsInScreenWithoutTransform()) {
++      last_window_screen_rect_ == FuryWindowScreenRect()) {
+     return;
+   }
+ 
+   last_view_screen_rect_ = view_->GetViewBoundsWithoutTransform();
+-  last_window_screen_rect_ = view_->GetBoundsInScreenWithoutTransform();
++  last_window_screen_rect_ = FuryWindowScreenRect();
+   blink_widget_->UpdateScreenRects(
+       last_view_screen_rect_, last_window_screen_rect_,
+       base::BindOnce(&RenderWidgetHostImpl::OnUpdateScreenRectsAck,
+@@ -705,6 +706,52 @@ void RenderWidgetHostImpl::SendScreenRects() {
+   waiting_for_screen_rects_ack_ = true;
+ }
+ 
++// Fury patch 0020: outerWidth and outerHeight are the window's size, and a
++// persona's window has the chrome of the persona's OS around it, not the
++// host's. So the rect every frame of a page is told is the top-level page's
++// viewport plus the persona's chrome (screen.chromeWidthDelta and
++// chromeHeightDelta), at the window's real position.
++//
++// It used to be the renderer adding the chrome to the frame's own innerWidth.
++// That holds in the page and nowhere else: an iframe got its own box plus the
++// chrome, 300x289 for a default 300x150 iframe beside 1004x748 in the page,
++// measured on the Windows build box on 24.10.2026, where real Chrome gives the
++// page's pair in every frame. Taking the page's viewport from the top-level
++// view here gives a cross-site iframe in another process the same pair, and
++// from its first script: the renderer's own copy of the page's viewport
++// reaches such a frame only after it has started running (measured 0x0 at
++// load). It also leaves outerWidth alone when the page is zoomed, as a real
++// window does, where innerWidth + chrome shrank with the zoom.
++//
++// A phone persona's window is its screen, which the renderer answers for
++// (patch 0131), and a widget that is not a frame (a <select> popup) keeps its
++// real rect.
++gfx::Rect RenderWidgetHostImpl::FuryWindowScreenRect() {
++  gfx::Rect window = view_->GetBoundsInScreenWithoutTransform();
++  const fury::FuryConfig* config = fury::FuryConfig::Get();
++  if (!config || config->GetBool("mobile.enabled").value_or(false) ||
++      (!owner_delegate_ && !view_->IsRenderWidgetHostViewChildFrame())) {
++    return window;
++  }
++  RenderWidgetHostViewBase* root = view_->GetRootView();
++  if (!root) {
++    return window;
++  }
++  gfx::Size viewport = root->GetViewBoundsWithoutTransform().size();
++  if (viewport.IsEmpty()) {
++    return window;
++  }
++  if (std::optional<int> delta = config->GetInt("screen.chromeWidthDelta");
++      delta && *delta >= 0) {
++    window.set_width(viewport.width() + *delta);
++  }
++  if (std::optional<int> delta = config->GetInt("screen.chromeHeightDelta");
++      delta && *delta >= 0) {
++    window.set_height(viewport.height() + *delta);
++  }
++  return window;
++}
++
+ void RenderWidgetHostImpl::SetFrameDepth(unsigned int depth) {
+   if (frame_depth_ == depth) {
+     return;
+@@ -3011,7 +3058,7 @@ void RenderWidgetHostImpl::OnUpdateScreenRectsAck() {
+   view_->SendInitialPropertiesIfNeeded();
+ 
+   if (view_->GetViewBoundsWithoutTransform() == last_view_screen_rect_ &&
+-      view_->GetBoundsInScreenWithoutTransform() == last_window_screen_rect_) {
++      FuryWindowScreenRect() == last_window_screen_rect_) {
+     return;
+   }
+ 
+diff --git a/content/browser/renderer_host/render_frame_host_impl.cc b/content/browser/renderer_host/render_frame_host_impl.cc
+index 2a4625eebc..4d2d44eba4 100644
+--- a/content/browser/renderer_host/render_frame_host_impl.cc
++++ b/content/browser/renderer_host/render_frame_host_impl.cc
+@@ -10826,9 +10826,10 @@ void RenderFrameHostImpl::CreateNewWindow(
+                                 ->GetLocalRenderWidgetHost()) {
+         if (auto* shown_rwhv = shown_rwh->GetView()) {
+           reply->widget_screen_rect.emplace(shown_rwhv->GetViewBounds());
++          // Fury patch 0020: the window rect the opened page is told.
+           reply->window_screen_rect.emplace(
+-              static_cast<RenderWidgetHostViewBase*>(shown_rwhv)
+-                  ->GetBoundsInScreenWithoutTransform());
++              static_cast<RenderWidgetHostImpl*>(shown_rwh)
++                  ->FuryWindowScreenRect());
+           reply->visual_properties =
+               static_cast<RenderWidgetHostImpl*>(shown_rwh)
+                   ->GetVisualProperties();

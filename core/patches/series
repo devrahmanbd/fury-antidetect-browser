@@ -72,6 +72,14 @@
 # depends on it, while outerHeight - innerHeight is the OS tell. Phase 0
 # measured 143 px on a clean build against 87 px on real Chrome.
 #
+# The browser does the adding (RenderWidgetHostImpl::FuryWindowScreenRect): it
+# tells every frame a window of the top-level page's viewport plus the chrome.
+# Until 24.10.2026 the renderer added the chrome to the frame's OWN innerHeight,
+# so an iframe reported its box plus the chrome (300x289 beside the page's
+# 1004x748 on the Windows box); a cross-site iframe has no other source of the
+# page's viewport at its first script. Touches render_widget_host_impl.cc,
+# owned with 0132, and render_frame_host_impl.cc, owned with 0131.
+#
 # CSS asks too, and for a month it got the host's answer. device-width,
 # device-height, resolution and color are computed in media_values.cc straight
 # from ScreenInfo, never through Screen, so a persona's screen.width of 1920
