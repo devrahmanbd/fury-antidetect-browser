@@ -116,6 +116,25 @@ function compact(o: MachineOverrides): MachineOverrides {
   return Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined)) as MachineOverrides;
 }
 
+/** The OS this computer runs, as a persona's `os` starts: "macOS" or
+ *  "Windows"; null elsewhere. Read from the webview, which is WKWebView on a
+ *  Mac and WebView2 on Windows, so it names the real machine.
+ *
+ *  A machine of another OS is caught: on demo.fingerprint.com on 24.10.2026 a
+ *  Windows profile on a Mac and a macOS profile on Windows were both flagged as
+ *  an anti-detect browser, the same profiles on their own OS were not. So new
+ *  profiles get this OS's machines, they come first in the list, and picking
+ *  another says why not (catalogue::pick_weighted_on does the same in bulk). */
+function hostOs(): string | null {
+  const ua = navigator.userAgent;
+  if (/Macintosh|Mac OS X/.test(ua)) return "macOS";
+  if (/Windows/.test(ua)) return "Windows";
+  return null;
+}
+const HOST_OS = hostOs();
+const osOf = (p: Persona) => p.os.split(" ")[0];
+const foreign = (p: Persona) => HOST_OS !== null && osOf(p) !== HOST_OS;
+
 function pickWeighted(list: Persona[]): string | undefined {
   if (list.length === 0) return undefined;
   const total = list.reduce((sum, p) => sum + (p.weight || 0), 0);
@@ -206,6 +225,7 @@ export function ProfileDialog({
   const [name, setName] = useState(editing?.name ?? "");
   const [tags, setTags] = useState((editing?.tags ?? []).join(", "));
   const [personaId, setPersonaId] = useState(editing?.persona_id ?? "");
+  const chosenPersona = personas.find((p) => p.id === personaId);
   const [proxyId, setProxyId] = useState(editing?.proxy?.id ?? "");
   /** Permission for THIS profile to open with none. Off unless it was already
    *  on: the refusal is the default and stays the default. */
@@ -253,7 +273,8 @@ export function ProfileDialog({
   useEffect(() => {
     void api.personas().then((p) => {
       setPersonas(p);
-      setPersonaId((current) => current || pickWeighted(p) || "");
+      const here = p.filter((x) => !foreign(x));
+      setPersonaId((current) => current || pickWeighted(here.length ? here : p) || "");
     });
     void api.blocklists().then(setLists).catch(() => setLists([]));
   }, []);
@@ -767,7 +788,10 @@ export function ProfileDialog({
                       { own: true, title: t("pd.ownMachines") },
                       { own: false, title: t("pd.catalogue") },
                     ].map((g) => {
-                      const list = personas.filter((p) => !!p.own === g.own);
+                      // This computer's OS first; the rest keep their order.
+                      const list = personas
+                        .filter((p) => !!p.own === g.own)
+                        .sort((x, y) => Number(foreign(x)) - Number(foreign(y)));
                       if (list.length === 0) return null;
                       return (
                         <div key={String(g.own)}>
@@ -802,6 +826,7 @@ export function ProfileDialog({
                                     ? t("pd.captured")
                                     : t("pd.share", { pct: (p.weight * 100).toFixed(1) })}
                                   {p.source === "measured" ? ` · ${t("pd.measured")}` : ""}
+                                  {foreign(p) && <span className="otherOs">{` · ${t("pd.otherOs")}`}</span>}
                                 </span>
                               </div>
                             </button>
@@ -1063,6 +1088,13 @@ export function ProfileDialog({
 
           <aside className="overview">
             <h3>{t("pd.overview")}</h3>
+            {/* Here rather than under the machine list: the list scrolls and this
+                column is beside every tab, so the warning cannot scroll away. */}
+            {chosenPersona && foreign(chosenPersona) && (
+              <div className="verdict bad" style={{ marginBottom: "var(--s-3)" }}>
+                {t("pd.osMismatch", { host: HOST_OS ?? "", os: osOf(chosenPersona) })}
+              </div>
+            )}
             {preview ? (
               <>
                 <dl className="kv">

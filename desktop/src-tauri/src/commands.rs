@@ -3202,8 +3202,8 @@ pub async fn create_profiles(
     }
 
     let pattern = naming(&name_pattern, template.get("name").and_then(|v| v.as_str()));
-    // Absent means spread them across the catalogue by how common each machine
-    // is — see `catalogue::pick_weighted`. Picked here rather than on the
+    // Absent means spread them across this computer's OS's machines by how
+    // common each is — see `catalogue::pick_weighted_on`. Picked here rather than on the
     // server because the server has no reason to hold that policy.
     let pick = template
         .get("persona_id")
@@ -3220,7 +3220,11 @@ pub async fn create_profiles(
         one["name"] = serde_json::json!(pattern.replace("{n}", &i.to_string()));
         if pick {
             one["persona_id"] =
-                serde_json::json!(fury_shared::catalogue::pick_weighted(rand::random()).id);
+                serde_json::json!(fury_shared::catalogue::pick_weighted_on(
+                rand::random(),
+                fury_shared::catalogue::host_os(),
+            )
+            .id);
         }
         match save_profile(state.clone(), one, origin.clone()).await {
             Ok(v) => created.push(v),

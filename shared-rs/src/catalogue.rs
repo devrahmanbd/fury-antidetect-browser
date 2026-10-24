@@ -470,7 +470,42 @@ const WINDOWS: &[Variant] = &[
 /// which drives the canvas, audio and geometry noise, and its exit. Both of
 /// those are per profile and neither comes from here.
 pub fn pick_weighted(roll: u64) -> Persona {
+    pick_weighted_from(all(), roll)
+}
+
+/// The operating system this build runs on, spelled as `PersonaOs::name`
+/// spells it; None where there are no desktop personas for it (Linux).
+pub fn host_os() -> Option<&'static str> {
+    if cfg!(target_os = "macos") {
+        Some("macOS")
+    } else if cfg!(windows) {
+        Some("Windows")
+    } else {
+        None
+    }
+}
+
+/// `pick_weighted` among the machines that run `os`, which is what a profile
+/// made on this computer should get: `pick_weighted_on(roll, host_os())`.
+///
+/// A machine of another OS is not hidden by Fury's patches. Measured on
+/// demo.fingerprint.com on 24.10.2026: a Windows profile on a Mac and a macOS
+/// profile on Windows were both flagged (tampering 0.99, anti-detect browser,
+/// anomaly 1) with any screen, while the same profiles on their own OS passed.
+/// The catalogue is 20 Windows machines to 8 Macs, so drawing from all of it
+/// gave a profile made on a Mac a Windows machine about 85% of the time.
+///
+/// With no OS, or none of its machines in the catalogue, the whole catalogue.
+pub fn pick_weighted_on(roll: u64, os: Option<&str>) -> Persona {
     let all = all();
+    let Some(os) = os else {
+        return pick_weighted_from(all, roll);
+    };
+    let same: Vec<Persona> = all.iter().filter(|p| p.os.name == os).cloned().collect();
+    pick_weighted_from(if same.is_empty() { all } else { same }, roll)
+}
+
+fn pick_weighted_from(all: Vec<Persona>, roll: u64) -> Persona {
     // Weights are shares of the world's machines, so they sum to well under 1.
     // Normalising against their own total is what makes this a distribution
     // over the catalogue rather than over all computers — otherwise most rolls
@@ -768,6 +803,25 @@ mod tests {
                 want
             );
         }
+    }
+
+    #[test]
+    fn a_profile_made_here_gets_a_machine_of_this_os() {
+        for os in ["macOS", "Windows"] {
+            let mut seen = std::collections::HashSet::new();
+            for i in 0..2_000u64 {
+                let roll = i.wrapping_mul(0x9e37_79b9_7f4a_7c15);
+                let p = pick_weighted_on(roll, Some(os));
+                assert_eq!(p.os.name, os, "{} for a {os} computer", p.id);
+                seen.insert(p.id);
+            }
+            // Every machine of that OS stays reachable, not only the commonest.
+            let of_os = all().iter().filter(|p| p.os.name == os).count();
+            assert_eq!(seen.len(), of_os, "{os}: {seen:?}");
+        }
+        // No OS to match, or one with no machines: the whole catalogue.
+        assert_eq!(pick_weighted_on(42, None).id, pick_weighted(42).id);
+        assert_eq!(pick_weighted_on(42, Some("Linux")).id, pick_weighted(42).id);
     }
 
     #[test]

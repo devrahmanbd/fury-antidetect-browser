@@ -1155,6 +1155,7 @@ input::placeholder {
   min-width: 0;
 }
 
+.personaCard .sub .otherOs { color: var(--warn); }
 .personaCard .sub .gpu {
   flex: 1;
   min-width: 0;

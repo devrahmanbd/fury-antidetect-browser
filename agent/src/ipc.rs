@@ -1673,8 +1673,8 @@ impl Agent {
                     format!("{pattern} {{n}}")
                 };
 
-                // Absent means "spread them over the catalogue by how common
-                // each machine is" — see catalogue::pick_weighted.
+                // Absent means "spread them over this computer's OS's machines
+                // by how common each is" — see catalogue::pick_weighted_on.
                 let pick_persona = template.persona_id.trim().is_empty();
 
                 let mut made = Vec::new();
@@ -1685,7 +1685,11 @@ impl Agent {
                     p.fp_seed = 0;
                     p.name = pattern.replace("{n}", &i.to_string());
                     if pick_persona {
-                        p.persona_id = fury_shared::catalogue::pick_weighted(rand::random()).id;
+                        p.persona_id = fury_shared::catalogue::pick_weighted_on(
+                            rand::random(),
+                            fury_shared::catalogue::host_os(),
+                        )
+                        .id;
                     }
                     match self.store.upsert_profile(&p).await {
                         Ok(id) => made.push(id),
